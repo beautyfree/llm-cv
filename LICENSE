@@ -2,28 +2,25 @@ Agent CV Source Available License (ACSAL) version 1.0
 
 Copyright (c) 2026-present agent-cv
 
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to use, copy, and modify the Software for any purpose,
-including commercial use, subject to the following conditions:
+This software is source-available. You can view, run, and modify
+the code subject to the following terms.
 
-1. You MAY use the Software to generate CVs, portfolios, and related
-   documents for yourself, your team, or your clients.
+ALLOWED:
 
-2. You MAY NOT use the Software, or any derivative work, to operate a
-   service that competes with agent-cv.dev. A competing service is
-   defined as a hosted product that accepts project data and generates
-   CVs, portfolios, or developer profile pages as a service to third
-   parties.
+- Personal use: generate CVs for yourself.
+- Company use: generate CVs for employees within your organization.
+- Integrate the CLI into your internal tools and CI/CD pipelines.
+- Fork and modify the code for your own use.
+- Contribute patches back to the project.
 
-3. You MAY NOT sell, sublicense, or distribute the Software as a
-   standalone commercial product.
+NOT ALLOWED:
 
-4. You MAY fork, modify, and publish patches. All derivative works
-   must retain this license and copyright notice.
-
-5. You MAY use the Software in internal tools, CI/CD pipelines, and
-   private workflows without restriction.
+- Offer a hosted service (SaaS, API, or website) that uses this
+  software or its derivatives to generate CVs, portfolios, or
+  developer profiles for third parties, whether free or paid.
+  This is the exclusive right of agent-cv.dev.
+- Sell, rebrand, or redistribute the software as a product.
+- Remove or alter this license in derivative works.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
@@ -33,4 +30,5 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-For questions about commercial licensing, contact hello@agent-cv.dev.
+For commercial licensing (e.g. embedding in your product, offering
+as a managed service), contact hello@agent-cv.dev.

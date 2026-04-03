@@ -123,10 +123,8 @@ analyze:
 
 ## Tech stack
 
-Built with [Bun](https://bun.sh), [Ink](https://github.com/vadimdemedes/ink) (React for terminal), [Pastel](https://github.com/vadimdemedes/pastel) (file-based CLI routing), [Zod](https://zod.dev), and [simple-git](https://github.com/steveukx/git-js).
+Built with [Bun](https://bun.sh), [Ink](https://github.com/vadimdemedes/ink) (React for terminal), [Commander](https://github.com/tj/commander.js), [Zod](https://zod.dev), and [simple-git](https://github.com/steveukx/git-js).
 
 ## License
 
-[Agent CV Source Available License](LICENSE)
-
-Free to use, modify, and fork. You can generate CVs for yourself, your team, or clients. You cannot operate a competing hosted CV service. No expiration.
+[Source Available](LICENSE). Free for personal and company use. You cannot offer this as a hosted service or sell it as a product. See [LICENSE](LICENSE) for details.
