@@ -96,7 +96,7 @@ export function EmailPicker({ emailCounts, preSelected, onSubmit }: Props) {
         <Text color="yellow">
           TIP: Select ALL emails you've ever used for git commits,
           including work, personal, and old addresses.
-          Missed one? Run with --reset-emails to re-select later.
+          Your previous selection is pre-checked. Just hit Enter if correct.
         </Text>
       </Box>
 

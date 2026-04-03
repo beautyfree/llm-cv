@@ -16,6 +16,7 @@ import { readConfig, writeConfig } from "../lib/config.ts";
 import {
   collectUserEmails,
   collectAllRepoEmails,
+  recountAuthorCommits,
 } from "../lib/discovery/git-metadata.ts";
 import type { Project, Inventory } from "../lib/types.ts";
 
@@ -30,7 +31,6 @@ export const options = z.object({
   dryRun: z.boolean().default(false).describe("Show what would be sent to the LLM without sending"),
   all: z.boolean().default(false).describe("Skip interactive selection, analyze all projects"),
   email: z.string().optional().describe("Email(s) to filter by, for generating someone else's CV (comma-separated)"),
-  resetEmails: z.boolean().default(false).describe("Re-select your email addresses"),
 });
 
 type Props = {
@@ -41,7 +41,7 @@ type Props = {
 type Phase =
   | "scanning"
   | "picking-emails"
-  | "rescanning"
+  | "recounting"
   | "selecting"
   | "checking-agent"
   | "analyzing"
@@ -51,7 +51,7 @@ type Phase =
 
 export default function Generate({
   args: [directory],
-  options: { output, agent, noCache, dryRun, all: selectAll, email, resetEmails },
+  options: { output, agent, noCache, dryRun, all: selectAll, email },
 }: Props) {
   const [phase, setPhase] = useState<Phase>("scanning");
   const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -62,32 +62,16 @@ export default function Generate({
   const [markdown, setMarkdown] = useState("");
   const [error, setError] = useState("");
 
-  // Email picker state
+  // Email state
   const [emailCounts, setEmailCounts] = useState<Map<string, number>>(new Map());
   const [gitConfigEmails, setGitConfigEmails] = useState<Set<string>>(new Set());
   const [confirmedEmails, setConfirmedEmails] = useState<string[]>([]);
 
-  // Phase 1: Initial scan + email resolution
+  // Phase 1: Single scan (collects everything, no email filtering yet)
   useEffect(() => {
-    async function initialScan() {
+    async function scan() {
       try {
-        // If --email is provided, use those directly (generating for someone else)
-        if (email) {
-          const emails = email.split(",").map((e) => e.trim());
-          setConfirmedEmails(emails);
-          setPhase("rescanning");
-          return;
-        }
-
-        // Check saved config (unless --reset-emails)
-        const config = await readConfig();
-        if (!resetEmails && config.emailsConfirmed && config.emails.length > 0) {
-          setConfirmedEmails(config.emails);
-          setPhase("rescanning");
-          return;
-        }
-
-        // No saved emails. Do a quick scan to discover all emails from repos.
+        // Scan with empty emails first (just collect metadata)
         const scanResult = await scanDirectory(directory, { verbose: false, emails: [] });
 
         if (scanResult.projects.length === 0) {
@@ -96,39 +80,51 @@ export default function Generate({
           return;
         }
 
-        // Collect all emails from git shortlog across all scanned repos
-        const gitDirs = scanResult.projects
-          .filter((p) => p.hasGit)
-          .map((p) => p.path);
-        const allEmails = await collectAllRepoEmails(gitDirs);
-        const configEmails = await collectUserEmails([]);
+        // Merge and save
+        const existingInventory = await readInventory();
+        const merged = mergeInventory(existingInventory, scanResult.projects, directory);
+        await writeInventory(merged);
+        setInventory(merged);
+        setAllProjects(merged.projects.filter((p) => !p.tags.includes("removed")));
 
-        if (allEmails.size <= 1) {
-          // Only one email (or zero) found, no ambiguity
-          const emails = allEmails.size === 1
-            ? [...allEmails.keys()]
-            : [...configEmails];
+        // If --email provided, skip picker entirely
+        if (email) {
+          const emails = email.split(",").map((e) => e.trim());
           setConfirmedEmails(emails);
-
-          // Save it so we don't ask again
-          if (emails.length > 0) {
-            await writeConfig({ emails, emailsConfirmed: true });
-          }
-
-          setPhase("rescanning");
+          setPhase("recounting");
           return;
         }
 
-        // Multiple emails found. Show picker.
+        // Collect all emails from shortlog + git config
+        const gitDirs = scanResult.projects.filter((p) => p.hasGit).map((p) => p.path);
+        const allEmails = await collectAllRepoEmails(gitDirs);
+        const configEmails = await collectUserEmails([]);
+
+        // Pre-select: saved config emails + git config emails
+        const config = await readConfig();
+        const preSelected = new Set<string>([
+          ...configEmails,
+          ...(config.emails || []).map((e) => e.toLowerCase()),
+        ]);
+
         setEmailCounts(allEmails);
-        setGitConfigEmails(configEmails);
+        setGitConfigEmails(preSelected);
+
+        // Always show picker (user confirms every time)
+        if (allEmails.size === 0) {
+          // No git repos at all, skip email step
+          setConfirmedEmails([]);
+          setPhase("selecting");
+          return;
+        }
+
         setPhase("picking-emails");
       } catch (err: any) {
         setError(err.message);
         setPhase("error");
       }
     }
-    initialScan();
+    scan();
   }, [directory, email]);
 
   // Handle email picker submit
@@ -137,42 +133,37 @@ export default function Generate({
     if (save) {
       await writeConfig({ emails: selected, emailsConfirmed: true });
     }
-    setPhase("rescanning");
+    setPhase("recounting");
   }, []);
 
-  // Phase 2: Rescan with confirmed emails
+  // Phase 2: Recount author commits with confirmed emails (no rescan)
   useEffect(() => {
-    if (phase !== "rescanning") return;
+    if (phase !== "recounting") return;
 
-    async function rescan() {
+    async function recount() {
       try {
-        const scanResult = await scanDirectory(directory, {
-          verbose: false,
-          emails: confirmedEmails,
-        });
+        const projects = [...allProjects];
 
-        if (scanResult.projects.length === 0) {
-          setError(`No projects found in ${directory}`);
-          setPhase("error");
-          return;
+        // Recount authorCommitCount for each git project
+        for (const project of projects) {
+          if (!project.hasGit || confirmedEmails.length === 0) continue;
+          const { authorCommits, matchedEmail } = await recountAuthorCommits(
+            project.path,
+            confirmedEmails
+          );
+          project.authorCommitCount = authorCommits;
+          project.authorEmail = matchedEmail;
         }
 
-        const existingInventory = await readInventory();
-        const merged = mergeInventory(
-          existingInventory,
-          scanResult.projects,
-          directory
-        );
-        await writeInventory(merged);
-        setInventory(merged);
+        setAllProjects(projects);
 
-        const available = merged.projects.filter(
-          (p) => !p.tags.includes("removed")
-        );
-        setAllProjects(available);
+        // Update inventory with recounted values
+        if (inventory) {
+          await writeInventory(inventory);
+        }
 
         if (selectAll) {
-          setSelectedProjects(available);
+          setSelectedProjects(projects);
           setPhase("checking-agent");
         } else {
           setPhase("selecting");
@@ -182,8 +173,8 @@ export default function Generate({
         setPhase("error");
       }
     }
-    rescan();
-  }, [phase, confirmedEmails, directory, selectAll]);
+    recount();
+  }, [phase, confirmedEmails, allProjects, inventory, selectAll]);
 
   // Handle project selection submit
   const handleSelection = useCallback((selected: Project[]) => {
@@ -196,7 +187,7 @@ export default function Generate({
     setPhase("checking-agent");
   }, []);
 
-  // Phase 3+4+5: Agent check, analyze, render
+  // Phase 3+4: Agent check, analyze, render
   useEffect(() => {
     if (phase !== "checking-agent") return;
 
@@ -229,10 +220,8 @@ export default function Generate({
           if (dryRun) {
             const context = await buildProjectContext(project);
             const totalChars =
-              context.readme.length +
-              context.dependencies.length +
-              context.directoryTree.length +
-              context.gitShortlog.length +
+              context.readme.length + context.dependencies.length +
+              context.directoryTree.length + context.gitShortlog.length +
               context.recentCommits.length;
             console.error(
               `\n--- DRY RUN: ${project.displayName} ---\n` +
@@ -299,7 +288,7 @@ export default function Generate({
     );
   }
 
-  if (phase === "rescanning") {
+  if (phase === "recounting") {
     return <Text color="yellow">Identifying your projects...</Text>;
   }
 

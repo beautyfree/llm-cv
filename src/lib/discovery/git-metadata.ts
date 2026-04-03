@@ -114,6 +114,34 @@ export async function collectAllRepoEmails(
 }
 
 /**
+ * Recount author commits for a project using a new set of emails.
+ * Fast: only runs git rev-list --count, no filesystem scan.
+ */
+export async function recountAuthorCommits(
+  dir: string,
+  emails: string[]
+): Promise<{ authorCommits: number; matchedEmail: string }> {
+  let authorCommits = 0;
+  let matchedEmail = "";
+
+  try {
+    const git = simpleGit(dir);
+    for (const email of emails) {
+      try {
+        const count = await git.raw([
+          "rev-list", "--count", "--author", email, "HEAD",
+        ]);
+        const n = parseInt(count.trim(), 10) || 0;
+        authorCommits += n;
+        if (n > 0 && !matchedEmail) matchedEmail = email;
+      } catch { /* ignore */ }
+    }
+  } catch { /* not a git repo */ }
+
+  return { authorCommits, matchedEmail };
+}
+
+/**
  * Extract git metadata from a repository.
  * Counts commits matching ANY of the user's known emails.
  */
