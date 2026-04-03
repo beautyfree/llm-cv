@@ -33,7 +33,12 @@ export default function Stats({}: Props) {
   if (error) return <Text color="red">Error: {error}</Text>;
   if (!inventory) return <Text color="yellow">Loading inventory...</Text>;
 
-  const projects = inventory.projects.filter((p) => !p.tags.includes("removed"));
+  const allProjects = inventory.projects.filter((p) => !p.tags.includes("removed"));
+
+  // Only count "my" projects in stats
+  const projects = allProjects.filter(
+    (p) => p.authorCommitCount > 0 || !p.hasGit || p.commitCount === 0 || p.hasUncommittedChanges
+  );
 
   // Group by year and primary language
   const byYear = new Map<string, Map<string, number>>();
@@ -64,10 +69,8 @@ export default function Stats({}: Props) {
   }
   const sortedFw = [...fwCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
 
-  // My projects vs forks
-  const myProjects = projects.filter(
-    (p) => p.authorCommitCount > 0 || !p.hasGit || p.commitCount === 0 || p.hasUncommittedChanges
-  ).length;
+  const totalInInventory = allProjects.length;
+  const myProjects = projects.length;
 
   return (
     <Box flexDirection="column">
@@ -117,7 +120,7 @@ export default function Stats({}: Props) {
       <Text> </Text>
       <Text bold>Summary</Text>
       <Text>
-        {totalProjects} projects | {myProjects} yours | {totalProjects - myProjects} forks/clones | {sortedLangs.length} languages | {years.find(y => y !== "Unknown") || "?"} — {[...years].reverse().find(y => y !== "Unknown") || "?"}
+        {myProjects} your projects ({totalInInventory} total in inventory) | {sortedLangs.length} languages | {years.find(y => y !== "Unknown") || "?"} — {[...years].reverse().find(y => y !== "Unknown") || "?"}
       </Text>
     </Box>
   );
