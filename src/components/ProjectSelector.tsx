@@ -133,20 +133,28 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
       return { total, selected: sel };
     }
 
-    // Find minimum depth to make indentation relative
-    let minDepth = Infinity;
+    // Build set of visible group paths for depth calculation
+    const visiblePaths = new Set<string>();
     for (const [groupPath] of filteredGroups) {
-      if (isHiddenByParent(groupPath)) continue;
-      const d = groupPath === "." ? 0 : groupPath.split("/").length;
-      if (d < minDepth) minDepth = d;
+      if (!isHiddenByParent(groupPath)) visiblePaths.add(groupPath);
     }
-    if (minDepth === Infinity) minDepth = 0;
+
+    // Calculate depth as number of visible ancestors (not path segments)
+    function getDepth(groupPath: string): number {
+      if (groupPath === ".") return 0;
+      let depth = 0;
+      const parts = groupPath.split("/");
+      for (let i = 1; i < parts.length; i++) {
+        const ancestor = parts.slice(0, i).join("/");
+        if (visiblePaths.has(ancestor)) depth++;
+      }
+      return depth;
+    }
 
     for (const [groupPath, items] of filteredGroups) {
       if (isHiddenByParent(groupPath)) continue;
 
-      const absDepth = groupPath === "." ? 0 : groupPath.split("/").length;
-      const depth = absDepth - minDepth;
+      const depth = getDepth(groupPath);
       const { total, selected: sel } = countNested(groupPath);
       result.push({ kind: "group", path: groupPath, count: total, selectedCount: sel, depth });
 
