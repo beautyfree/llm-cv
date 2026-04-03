@@ -127,6 +127,6 @@ Built with [Bun](https://bun.sh), [Ink](https://github.com/vadimdemedes/ink) (Re
 
 ## License
 
-[Business Source License 1.1](LICENSE)
+[Agent CV Source Available License](LICENSE)
 
-Free to use, modify, and distribute. Cannot be used to operate a competing hosted CV service. Converts to MIT on April 3, 2030.
+Free to use, modify, and fork. You can generate CVs for yourself, your team, or clients. You cannot operate a competing hosted CV service. No expiration.
