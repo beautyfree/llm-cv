@@ -23,6 +23,7 @@ export const options = z.object({
   noCache: z.boolean().default(false).describe("Force fresh analysis, ignore cache"),
   dryRun: z.boolean().default(false).describe("Show what would be sent to the LLM without sending"),
   all: z.boolean().default(false).describe("Skip interactive selection, analyze all projects"),
+  email: z.string().optional().describe("Additional git email to recognize as yours (comma-separated for multiple)"),
 });
 
 type Props = {
@@ -41,7 +42,7 @@ type Phase =
 
 export default function Generate({
   args: [directory],
-  options: { output, agent, noCache, dryRun, all: selectAll },
+  options: { output, agent, noCache, dryRun, all: selectAll, email },
 }: Props) {
   const [phase, setPhase] = useState<Phase>("scanning");
   const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -56,7 +57,8 @@ export default function Generate({
   useEffect(() => {
     async function scan() {
       try {
-        const scanResult = await scanDirectory(directory, { verbose: false });
+        const emails = email ? email.split(",").map((e) => e.trim()) : [];
+        const scanResult = await scanDirectory(directory, { verbose: false, emails });
 
         if (scanResult.projects.length === 0) {
           setError(`No projects found in ${directory}`);

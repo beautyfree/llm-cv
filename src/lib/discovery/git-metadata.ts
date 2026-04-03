@@ -9,27 +9,87 @@ export interface GitMetadata {
 }
 
 /**
+ * Collect all known email addresses for the current user.
+ * Checks: global git config, env vars, and optionally user-provided list.
+ *
+ * Call once at scan start, pass the result to extractGitMetadata for each repo.
+ */
+export async function collectUserEmails(
+  extraEmails: string[] = []
+): Promise<Set<string>> {
+  const emails = new Set<string>();
+
+  // 1. Global git config
+  try {
+    const git = simpleGit();
+    const globalEmail = (
+      await git.raw(["config", "--global", "user.email"])
+    ).trim();
+    if (globalEmail) emails.add(globalEmail.toLowerCase());
+  } catch {
+    // no global config
+  }
+
+  // 2. Environment variables (some CI/CD systems set these)
+  const envEmail =
+    process.env.GIT_AUTHOR_EMAIL || process.env.GIT_COMMITTER_EMAIL;
+  if (envEmail) emails.add(envEmail.toLowerCase());
+
+  // 3. User-provided extras (from config file or --email flag)
+  for (const e of extraEmails) {
+    if (e.includes("@")) emails.add(e.toLowerCase());
+  }
+
+  return emails;
+}
+
+/**
+ * Discover additional emails by scanning a repo's commit log.
+ * Finds the repo-local user.email and checks if the most frequent
+ * committer matches any known email. This catches the case where
+ * a repo has a different local config than the global one.
+ */
+export async function discoverRepoEmails(
+  dir: string,
+  knownEmails: Set<string>
+): Promise<string[]> {
+  const discovered: string[] = [];
+
+  try {
+    const git = simpleGit(dir);
+
+    // Check repo-local email config
+    try {
+      const localEmail = (
+        await git.raw(["config", "--local", "user.email"])
+      ).trim();
+      if (localEmail && !knownEmails.has(localEmail.toLowerCase())) {
+        discovered.push(localEmail.toLowerCase());
+      }
+    } catch {
+      // no local config
+    }
+  } catch {
+    // not a git repo or git not installed
+  }
+
+  return discovered;
+}
+
+/**
  * Extract git metadata from a repository.
- * Uses simple-git for date/author extraction.
- * Returns null if git operations fail.
+ * Uses a set of known user emails to count "my" commits across
+ * all of the user's identities (work email, personal email, old email, etc.)
  */
 export async function extractGitMetadata(
-  dir: string
+  dir: string,
+  userEmails: Set<string>
 ): Promise<GitMetadata | null> {
   try {
     const git = simpleGit(dir);
 
-    // Check if it's actually a git repo
     const isRepo = await git.checkIsRepo();
     if (!isRepo) return null;
-
-    // Get author email
-    let authorEmail = "";
-    try {
-      authorEmail = (await git.raw(["config", "user.email"])).trim();
-    } catch {
-      // No user.email configured, use empty
-    }
 
     // Get total commit count
     let totalCommits = 0;
@@ -37,7 +97,6 @@ export async function extractGitMetadata(
       const countOutput = await git.raw(["rev-list", "--count", "HEAD"]);
       totalCommits = parseInt(countOutput.trim(), 10) || 0;
     } catch {
-      // Possibly empty repo
       return null;
     }
 
@@ -59,18 +118,45 @@ export async function extractGitMetadata(
       // Can't get dates
     }
 
-    // Get author commit count
+    // Count commits across ALL known user emails
     let authorCommits = 0;
-    if (authorEmail) {
+    let matchedEmail = "";
+
+    for (const email of userEmails) {
       try {
-        const authorCount = await git.raw([
+        const count = await git.raw([
           "rev-list",
           "--count",
           "--author",
-          authorEmail,
+          email,
           "HEAD",
         ]);
-        authorCommits = parseInt(authorCount.trim(), 10) || 0;
+        const n = parseInt(count.trim(), 10) || 0;
+        authorCommits += n;
+        if (n > 0 && !matchedEmail) matchedEmail = email;
+      } catch {
+        // ignore
+      }
+    }
+
+    // Fallback: if no known emails matched, check repo-local config
+    if (authorCommits === 0) {
+      try {
+        const localEmail = (
+          await git.raw(["config", "user.email"])
+        ).trim();
+        if (localEmail) {
+          const count = await git.raw([
+            "rev-list",
+            "--count",
+            "--author",
+            localEmail,
+            "HEAD",
+          ]);
+          const n = parseInt(count.trim(), 10) || 0;
+          authorCommits = n;
+          matchedEmail = localEmail;
+        }
       } catch {
         // ignore
       }
@@ -81,10 +167,9 @@ export async function extractGitMetadata(
       lastCommitDate,
       totalCommits,
       authorCommits,
-      authorEmail,
+      authorEmail: matchedEmail,
     };
   } catch {
-    // Git not installed or corrupted repo
     return null;
   }
 }

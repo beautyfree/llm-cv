@@ -2,7 +2,11 @@ import { readdir, stat, access } from "node:fs/promises";
 import { join, basename, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import type { Project } from "../types.ts";
-import { extractGitMetadata } from "./git-metadata.ts";
+import {
+  extractGitMetadata,
+  collectUserEmails,
+  discoverRepoEmails,
+} from "./git-metadata.ts";
 import { scanForSecrets } from "./privacy-auditor.ts";
 
 /**
@@ -58,6 +62,8 @@ const PROJECT_MARKERS: Array<{
 export interface ScanOptions {
   maxDepth?: number;
   verbose?: boolean;
+  /** Extra email addresses to recognize as "mine" (work, old, etc.) */
+  emails?: string[];
 }
 
 export interface ScanResult {
@@ -74,11 +80,17 @@ export async function scanDirectory(
   rootPath: string,
   options: ScanOptions = {}
 ): Promise<ScanResult> {
-  const { maxDepth = 5, verbose = false } = options;
+  const { maxDepth = 5, verbose = false, emails = [] } = options;
   const absRoot = resolve(rootPath);
   const projects: Project[] = [];
   const errors: Array<{ path: string; error: string }> = [];
   const foundProjectPaths = new Set<string>();
+
+  // Collect all known user emails once at scan start
+  const userEmails = await collectUserEmails(emails);
+  if (verbose && userEmails.size > 0) {
+    console.error(`  Git identities: ${[...userEmails].join(", ")}`);
+  }
 
   async function walk(dir: string, depth: number): Promise<void> {
     if (depth > maxDepth) return;
@@ -127,11 +139,18 @@ export async function scanDirectory(
         foundProjectPaths.add(dir);
 
         try {
+          // Discover repo-local emails and add to known set
+          if (hasGit) {
+            const repoEmails = await discoverRepoEmails(dir, userEmails);
+            for (const e of repoEmails) userEmails.add(e);
+          }
+
           const project = await buildProject(
             dir,
             primaryMarker,
             detectedMarkers,
-            hasGit
+            hasGit,
+            userEmails
           );
           projects.push(project);
           if (verbose) {
@@ -173,7 +192,8 @@ async function buildProject(
   dir: string,
   primaryMarker: (typeof PROJECT_MARKERS)[0] | undefined,
   detectedMarkers: string[],
-  hasGit: boolean
+  hasGit: boolean,
+  userEmails: Set<string>
 ): Promise<Project> {
   const name = basename(dir);
   const id = createHash("sha256").update(dir).digest("hex").slice(0, 16);
@@ -215,7 +235,7 @@ async function buildProject(
   }
 
   // Git metadata (dates, commits)
-  const gitMeta = hasGit ? await extractGitMetadata(dir) : null;
+  const gitMeta = hasGit ? await extractGitMetadata(dir, userEmails) : null;
 
   // File timestamps fallback
   let dateRange = {

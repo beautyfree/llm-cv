@@ -15,6 +15,7 @@ export const args = z.tuple([
 export const options = z.object({
   verbose: z.boolean().default(false).describe("Show detailed scan progress"),
   json: z.boolean().default(false).describe("Output raw JSON instead of formatted text"),
+  email: z.string().optional().describe("Additional git email to recognize as yours (comma-separated for multiple)"),
 });
 
 type Props = {
@@ -22,7 +23,7 @@ type Props = {
   options: z.infer<typeof options>;
 };
 
-export default function Scan({ args: [directory], options: { verbose, json } }: Props) {
+export default function Scan({ args: [directory], options: { verbose, json, email } }: Props) {
   const [status, setStatus] = useState<"scanning" | "saving" | "done" | "error">("scanning");
   const [result, setResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string>("");
@@ -30,7 +31,8 @@ export default function Scan({ args: [directory], options: { verbose, json } }: 
   useEffect(() => {
     async function run() {
       try {
-        const scanResult = await scanDirectory(directory, { verbose });
+        const emails = email ? email.split(",").map((e) => e.trim()) : [];
+        const scanResult = await scanDirectory(directory, { verbose, emails });
         setResult(scanResult);
 
         setStatus("saving");
