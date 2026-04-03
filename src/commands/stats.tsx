@@ -19,7 +19,7 @@ export default function Stats({}: Props) {
       try {
         const inv = await readInventory();
         if (inv.projects.length === 0) {
-          setError("No projects in inventory. Run 'llm-cv scan' first.");
+          setError("No projects in inventory. Run 'agent-cv scan' first.");
           return;
         }
         setInventory(inv);

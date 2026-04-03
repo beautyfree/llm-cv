@@ -5,24 +5,24 @@ import type { AgentAdapter, ProjectAnalysis, ProjectContext } from "../types.ts"
  * Works with OpenRouter, OpenAI, Anthropic, and any OpenAI-compatible endpoint.
  *
  * Resolution order for API key:
- * 1. LLM_CV_API_KEY env var
+ * 1. AGENT_CV_API_KEY env var
  * 2. OPENROUTER_API_KEY
  * 3. ANTHROPIC_API_KEY
  * 4. OPENAI_API_KEY
  *
  * Resolution order for base URL:
- * 1. LLM_CV_BASE_URL env var
+ * 1. AGENT_CV_BASE_URL env var
  * 2. Inferred from which API key was found
  */
 export class APIAdapter implements AgentAdapter {
   name = "api";
 
   private getConfig(): { apiKey: string; baseUrl: string; model: string } | null {
-    const llmCvKey = process.env.LLM_CV_API_KEY;
-    const llmCvUrl = process.env.LLM_CV_BASE_URL;
+    const agentCvKey = process.env.AGENT_CV_API_KEY;
+    const agentCvUrl = process.env.AGENT_CV_BASE_URL;
 
-    if (llmCvKey && llmCvUrl) {
-      return { apiKey: llmCvKey, baseUrl: llmCvUrl, model: process.env.LLM_CV_MODEL || "gpt-4o" };
+    if (agentCvKey && agentCvUrl) {
+      return { apiKey: agentCvKey, baseUrl: agentCvUrl, model: process.env.AGENT_CV_MODEL || "gpt-4o" };
     }
 
     const openRouterKey = process.env.OPENROUTER_API_KEY;

@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import type { Inventory, Project } from "../types.ts";
 import { INVENTORY_VERSION } from "../types.ts";
 
-const DEFAULT_DIR = join(process.env.HOME || "~", ".llm-cv");
+const DEFAULT_DIR = join(process.env.HOME || "~", ".agent-cv");
 const INVENTORY_FILE = "inventory.json";
 
 function getInventoryPath(): string {

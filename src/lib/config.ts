@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 
-const CONFIG_DIR = join(process.env.HOME || "~", ".llm-cv");
+const CONFIG_DIR = join(process.env.HOME || "~", ".agent-cv");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 export interface Config {

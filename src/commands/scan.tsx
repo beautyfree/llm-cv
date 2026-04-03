@@ -104,7 +104,7 @@ export default function Scan({ args: [directory], options: { verbose, json, emai
           {"\n"}Privacy: {secrets} file{secrets !== 1 ? "s" : ""} with potential secrets detected and excluded.
         </Text>
       )}
-      <Text dimColor>{"\n"}Saved to ~/.llm-cv/inventory.json</Text>
+      <Text dimColor>{"\n"}Saved to ~/.agent-cv/inventory.json</Text>
     </Box>
   );
 }

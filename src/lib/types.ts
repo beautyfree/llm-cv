@@ -1,5 +1,5 @@
 /**
- * Core types for llm-cv.
+ * Core types for agent-cv.
  * These are framework-agnostic — no React/Ink imports here.
  */
 

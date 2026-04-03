@@ -1,32 +1,32 @@
-# llm-cv
+# agent-cv
 
 Generate a technical CV from your local project directories using AI.
 
-Your real project history lives on your filesystem, not on GitHub. Pet projects that never got pushed, corporate work behind VPNs, weekend experiments in obscure frameworks. `llm-cv` scans your directories, delegates analysis to AI, and generates a structured CV that captures work you'd otherwise forget.
+Your real project history lives on your filesystem, not on GitHub. Pet projects that never got pushed, corporate work behind VPNs, weekend experiments in obscure frameworks. `agent-cv` scans your directories, delegates analysis to AI, and generates a structured CV that captures work you'd otherwise forget.
 
 ## Quick start
 
 ```bash
 # Install
-bun install -g llm-cv
+bun install -g agent-cv
 
 # Scan your projects
-llm-cv scan ~/Projects
+agent-cv scan ~/Projects
 
 # Generate a CV (interactive: pick emails, pick projects)
-llm-cv generate ~/Projects --output cv.md
+agent-cv generate ~/Projects --output cv.md
 
 # See your tech evolution
-llm-cv stats
+agent-cv stats
 
 # What changed since last scan
-llm-cv diff ~/Projects
+agent-cv diff ~/Projects
 ```
 
 ## How it works
 
 ```
-llm-cv generate ~/Projects
+agent-cv generate ~/Projects
   │
   ├── Scan: walks directories, detects projects by markers
   │   (package.json, Cargo.toml, go.mod, pyproject.toml, ...)
@@ -74,18 +74,18 @@ llm-cv generate ~/Projects
 **Output**
 - Markdown CV grouped by year
 - Duplicate project names disambiguated with parent path
-- Persistent JSON inventory at `~/.llm-cv/inventory.json`
+- Persistent JSON inventory at `~/.agent-cv/inventory.json`
 - Cached analysis survives between runs
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `llm-cv scan <dir>` | Discover projects, save to inventory |
-| `llm-cv analyze <path>` | Analyze a single project with AI |
-| `llm-cv generate <dir>` | Full flow: scan → pick emails → pick projects → analyze → CV |
-| `llm-cv diff <dir>` | Show new/updated/removed projects since last scan |
-| `llm-cv stats` | Tech evolution timeline, language breakdown, framework ranking |
+| `agent-cv scan <dir>` | Discover projects, save to inventory |
+| `agent-cv analyze <path>` | Analyze a single project with AI |
+| `agent-cv generate <dir>` | Full flow: scan → pick emails → pick projects → analyze → CV |
+| `agent-cv diff <dir>` | Show new/updated/removed projects since last scan |
+| `agent-cv stats` | Tech evolution timeline, language breakdown, framework ranking |
 
 ## Flags
 
@@ -109,7 +109,7 @@ analyze:
 
 ## AI setup
 
-`llm-cv` auto-detects what you have. In priority order:
+`agent-cv` auto-detects what you have. In priority order:
 
 | Agent | How to set up |
 |-------|--------------|
@@ -119,7 +119,7 @@ analyze:
 | OpenRouter | `export OPENROUTER_API_KEY=...` (one key, all models) |
 | Anthropic | `export ANTHROPIC_API_KEY=...` |
 | OpenAI | `export OPENAI_API_KEY=...` |
-| Ollama | `export LLM_CV_BASE_URL=http://localhost:11434/v1` (no key needed) |
+| Ollama | `export AGENT_CV_BASE_URL=http://localhost:11434/v1` (no key needed) |
 
 ## Tech stack
 

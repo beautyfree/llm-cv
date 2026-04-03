@@ -1,15 +1,15 @@
 {
-  "name": "llm-cv",
+  "name": "agent-cv",
   "version": "0.1.0",
   "description": "Generate technical CVs from your local project directories using AI",
   "type": "module",
   "bin": {
-    "llm-cv": "./src/cli.ts"
+    "agent-cv": "./src/cli.ts"
   },
   "scripts": {
     "dev": "bun run src/cli.ts",
     "test": "bun test",
-    "build": "bun compile src/cli.ts --outfile dist/llm-cv"
+    "build": "bun compile src/cli.ts --outfile dist/agent-cv"
   },
   "devDependencies": {
     "@types/bun": "latest",
