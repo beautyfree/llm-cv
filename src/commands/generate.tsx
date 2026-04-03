@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Text, Box } from "ink";
 import { z } from "zod/v4";
 import { scanDirectory } from "../lib/discovery/scanner.ts";
@@ -10,7 +10,8 @@ import {
 import { buildProjectContext } from "../lib/analysis/context-builder.ts";
 import { ClaudeAdapter } from "../lib/analysis/claude-adapter.ts";
 import { MarkdownRenderer } from "../lib/output/markdown-renderer.ts";
-import type { Project, ProjectAnalysis } from "../lib/types.ts";
+import { ProjectSelector } from "../components/ProjectSelector.tsx";
+import type { Project, Inventory } from "../lib/types.ts";
 
 export const args = z.tuple([
   z.string().describe("Directory to scan for projects"),
@@ -21,6 +22,7 @@ export const options = z.object({
   agent: z.string().default("claude").describe("Agent to use for analysis"),
   noCache: z.boolean().default(false).describe("Force fresh analysis, ignore cache"),
   dryRun: z.boolean().default(false).describe("Show what would be sent to the LLM without sending"),
+  all: z.boolean().default(false).describe("Skip interactive selection, analyze all projects"),
 });
 
 type Props = {
@@ -39,20 +41,21 @@ type Phase =
 
 export default function Generate({
   args: [directory],
-  options: { output, agent, noCache, dryRun },
+  options: { output, agent, noCache, dryRun, all: selectAll },
 }: Props) {
   const [phase, setPhase] = useState<Phase>("scanning");
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
+  const [inventory, setInventory] = useState<Inventory | null>(null);
   const [current, setCurrent] = useState("");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [markdown, setMarkdown] = useState("");
   const [error, setError] = useState("");
 
+  // Phase 1: Scan
   useEffect(() => {
-    async function run() {
+    async function scan() {
       try {
-        // Phase 1: Scan
-        setPhase("scanning");
         const scanResult = await scanDirectory(directory, { verbose: false });
 
         if (scanResult.projects.length === 0) {
@@ -61,23 +64,52 @@ export default function Generate({
           return;
         }
 
-        // Merge with existing inventory
-        const inventory = await readInventory();
+        const existingInventory = await readInventory();
         const merged = mergeInventory(
-          inventory,
+          existingInventory,
           scanResult.projects,
           directory
         );
         await writeInventory(merged);
+        setInventory(merged);
 
-        // For v0a, auto-select all projects (interactive selection in v0b)
-        const selected = merged.projects.filter(
+        const available = merged.projects.filter(
           (p) => !p.tags.includes("removed")
         );
-        setProjects(selected);
+        setAllProjects(available);
 
-        // Phase 2: Check agent
-        setPhase("checking-agent");
+        if (selectAll) {
+          // --all flag: skip selection
+          setSelectedProjects(available);
+          setPhase("checking-agent");
+        } else {
+          setPhase("selecting");
+        }
+      } catch (err: any) {
+        setError(err.message);
+        setPhase("error");
+      }
+    }
+    scan();
+  }, [directory, selectAll]);
+
+  // Handle selection submit
+  const handleSelection = useCallback((selected: Project[]) => {
+    if (selected.length === 0) {
+      setError("No projects selected.");
+      setPhase("error");
+      return;
+    }
+    setSelectedProjects(selected);
+    setPhase("checking-agent");
+  }, []);
+
+  // Phase 2+3+4: Agent check, analyze, render
+  useEffect(() => {
+    if (phase !== "checking-agent") return;
+
+    async function analyzeAndRender() {
+      try {
         const adapter = new ClaudeAdapter();
         const available = await adapter.isAvailable();
 
@@ -91,11 +123,11 @@ export default function Generate({
           return;
         }
 
-        // Phase 3: Analyze each project
+        // Analyze
         setPhase("analyzing");
         const toAnalyze = noCache
-          ? selected
-          : selected.filter((p) => !p.analysis);
+          ? selectedProjects
+          : selectedProjects.filter((p) => !p.analysis);
 
         setProgress({ done: 0, total: toAnalyze.length });
 
@@ -105,13 +137,15 @@ export default function Generate({
 
           if (dryRun) {
             const context = await buildProjectContext(project);
+            const totalChars =
+              context.readme.length +
+              context.dependencies.length +
+              context.directoryTree.length +
+              context.gitShortlog.length +
+              context.recentCommits.length;
             console.error(
               `\n--- DRY RUN: ${project.displayName} ---\n` +
-                `Context size: ~${Math.round((context.readme.length + context.dependencies.length + context.directoryTree.length + context.gitShortlog.length + context.recentCommits.length) / 4)} tokens\n` +
-                `README: ${context.readme.length} chars\n` +
-                `Dependencies: ${context.dependencies.length} chars\n` +
-                `Tree: ${context.directoryTree.length} chars\n` +
-                `Git: ${context.gitShortlog.length + context.recentCommits.length} chars\n`
+                `Context size: ~${Math.round(totalChars / 4)} tokens\n`
             );
             setProgress({ done: i + 1, total: toAnalyze.length });
             continue;
@@ -125,24 +159,25 @@ export default function Generate({
             console.error(
               `Warning: Failed to analyze ${project.displayName}: ${err.message}`
             );
-            // Continue with other projects
           }
 
           setProgress({ done: i + 1, total: toAnalyze.length });
         }
 
-        // Save updated inventory with analyses
-        if (!dryRun) {
-          await writeInventory(merged);
+        // Save
+        if (!dryRun && inventory) {
+          await writeInventory(inventory);
         }
 
-        // Phase 4: Render
+        // Render
         setPhase("rendering");
         const renderer = new MarkdownRenderer();
-        const md = renderer.render(merged, selected.map((p) => p.id));
+        const md = renderer.render(
+          inventory!,
+          selectedProjects.map((p) => p.id)
+        );
         setMarkdown(md);
 
-        // Write to file or stdout
         if (output && !dryRun) {
           await Bun.write(output, md);
         }
@@ -153,15 +188,22 @@ export default function Generate({
         setPhase("error");
       }
     }
-    run();
-  }, [directory, agent, noCache, dryRun, output]);
+    analyzeAndRender();
+  }, [phase, selectedProjects, agent, noCache, dryRun, output, inventory]);
 
+  // Render based on phase
   if (phase === "error") {
     return <Text color="red">Error: {error}</Text>;
   }
 
   if (phase === "scanning") {
     return <Text color="yellow">Scanning {directory} for projects...</Text>;
+  }
+
+  if (phase === "selecting") {
+    return (
+      <ProjectSelector projects={allProjects} onSubmit={handleSelection} />
+    );
   }
 
   if (phase === "checking-agent") {
@@ -174,9 +216,7 @@ export default function Generate({
         <Text color="yellow">
           Analyzing [{progress.done}/{progress.total}]: {current}
         </Text>
-        {dryRun && (
-          <Text dimColor>(dry-run mode, no LLM calls)</Text>
-        )}
+        {dryRun && <Text dimColor>(dry-run mode, no LLM calls)</Text>}
       </Box>
     );
   }
@@ -186,8 +226,8 @@ export default function Generate({
   }
 
   // Done
-  const analyzed = projects.filter((p) => p.analysis).length;
-  const secrets = projects.reduce(
+  const analyzed = selectedProjects.filter((p) => p.analysis).length;
+  const secrets = selectedProjects.reduce(
     (n, p) => n + (p.privacyAudit?.secretsFound ?? 0),
     0
   );
@@ -195,11 +235,12 @@ export default function Generate({
   return (
     <Box flexDirection="column">
       <Text color="green" bold>
-        CV generated! {projects.length} projects, {analyzed} analyzed.
+        CV generated! {selectedProjects.length} projects, {analyzed} analyzed.
       </Text>
       {secrets > 0 && (
         <Text color="yellow">
-          Privacy: {secrets} file{secrets !== 1 ? "s" : ""} with secrets excluded from analysis.
+          Privacy: {secrets} file{secrets !== 1 ? "s" : ""} with secrets
+          excluded from analysis.
         </Text>
       )}
       {output ? (
