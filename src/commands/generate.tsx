@@ -20,7 +20,7 @@ import {
   recountAuthorCommitsBatch,
 } from "../lib/discovery/git-metadata.ts";
 import { detectForgottenGems } from "../lib/discovery/forgotten-gems.ts";
-import type { Project, Inventory } from "../lib/types.ts";
+import type { Project, Inventory, AgentAdapter } from "../lib/types.ts";
 
 export const args = z.tuple([
   z.string().describe("Directory to scan for projects"),
@@ -70,7 +70,7 @@ export default function Generate({
   const [lastFound, setLastFound] = useState("");
 
   // Agent state
-  const [resolvedAdapter, setResolvedAdapter] = useState<import("../lib/types.ts").AgentAdapter | null>(null);
+  const [resolvedAdapter, setResolvedAdapter] = useState<AgentAdapter | null>(null);
   const [resolvedAgentName, setResolvedAgentName] = useState("");
 
   // Email state
@@ -236,7 +236,7 @@ export default function Generate({
 
   // Handle agent picker submit
   const handleAgentPick = useCallback(
-    (adapter: import("../lib/types.ts").AgentAdapter, name: string) => {
+    (adapter: AgentAdapter, name: string) => {
       setResolvedAdapter(adapter);
       setResolvedAgentName(name);
       setPhase("analyzing");
