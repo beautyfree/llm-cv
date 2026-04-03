@@ -241,6 +241,11 @@ async function buildProject(
     }
   }
 
+  // Fallback: detect language by file extensions if still Unknown
+  if (language === "Unknown") {
+    language = await detectLanguageByFiles(dir);
+  }
+
   // Git metadata (dates, commits)
   const gitMeta = hasGit ? await extractGitMetadata(dir, userEmails) : null;
 
@@ -299,6 +304,54 @@ async function buildProject(
     tags: [],
     included: true,
   };
+}
+
+const EXT_TO_LANG: Record<string, string> = {
+  ".ts": "TypeScript", ".tsx": "TypeScript",
+  ".js": "JavaScript", ".jsx": "JavaScript", ".mjs": "JavaScript",
+  ".py": "Python",
+  ".rs": "Rust",
+  ".go": "Go",
+  ".rb": "Ruby",
+  ".java": "Java", ".kt": "Kotlin",
+  ".swift": "Swift",
+  ".cs": "C#",
+  ".cpp": "C++", ".cc": "C++", ".c": "C", ".h": "C",
+  ".php": "PHP",
+  ".ex": "Elixir", ".exs": "Elixir",
+  ".dart": "Dart",
+  ".lua": "Lua",
+  ".sh": "Shell", ".bash": "Shell", ".zsh": "Shell",
+  ".yml": "YAML", ".yaml": "YAML",
+  ".sol": "Solidity",
+};
+
+async function detectLanguageByFiles(dir: string): Promise<string> {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    const counts = new Map<string, number>();
+
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const dot = entry.name.lastIndexOf(".");
+      if (dot < 0) continue;
+      const ext = entry.name.slice(dot).toLowerCase();
+      const lang = EXT_TO_LANG[ext];
+      if (lang) counts.set(lang, (counts.get(lang) || 0) + 1);
+    }
+
+    if (counts.size === 0) return "Unknown";
+
+    // Return the most frequent language
+    let best = "Unknown";
+    let bestCount = 0;
+    for (const [lang, count] of counts) {
+      if (count > bestCount) { best = lang; bestCount = count; }
+    }
+    return best;
+  } catch {
+    return "Unknown";
+  }
 }
 
 async function fileExists(path: string): Promise<boolean> {
