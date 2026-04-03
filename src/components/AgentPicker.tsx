@@ -105,23 +105,23 @@ export function AgentPicker({ onSubmit }: Props) {
 
       {agents.map((agent, i) => {
         const isCursor = i === cursor;
-        const indicator = isCursor ? ">" : " ";
+        const radio = isCursor ? "◉" : "○";
 
         if (!agent.available) {
           return (
             <Box key={agent.name} gap={1}>
               <Text color="gray">
-                {indicator} {agent.label}
+                {radio} {agent.label}
               </Text>
-              <Text color="gray">not found</Text>
+              <Text color="gray">— not found</Text>
             </Box>
           );
         }
 
         return (
           <Box key={agent.name} gap={1}>
-            <Text color={isCursor ? "cyan" : "green"} bold={isCursor} inverse={isCursor}>
-              {indicator} {agent.label}
+            <Text color={isCursor ? "cyan" : undefined} bold={isCursor}>
+              {radio} {agent.label}
             </Text>
             <Text dimColor>{agent.detail}</Text>
           </Box>
