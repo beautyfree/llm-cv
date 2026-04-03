@@ -289,6 +289,7 @@ async function buildProject(
     hasGit,
     commitCount: gitMeta?.totalCommits ?? 0,
     authorCommitCount: gitMeta?.authorCommits ?? 0,
+    hasUncommittedChanges: gitMeta?.hasUncommittedChanges ?? false,
     lastCommit: gitMeta?.lastCommitDate,
     markers: hasGit
       ? [...detectedMarkers, ".git"]

@@ -6,6 +6,7 @@ export interface GitMetadata {
   totalCommits: number;
   authorCommits: number;
   authorEmail: string;
+  hasUncommittedChanges: boolean;
 }
 
 /**
@@ -186,12 +187,27 @@ export async function extractGitMetadata(
     const isRepo = await git.checkIsRepo();
     if (!isRepo) return null;
 
+    // Check for uncommitted changes (works even with 0 commits)
+    let hasUncommittedChanges = false;
+    try {
+      const status = await git.raw(["status", "--porcelain"]);
+      hasUncommittedChanges = status.trim().length > 0;
+    } catch { /* ignore */ }
+
     let totalCommits = 0;
     try {
       const countOutput = await git.raw(["rev-list", "--count", "HEAD"]);
       totalCommits = parseInt(countOutput.trim(), 10) || 0;
     } catch {
-      return null;
+      // No commits yet (empty repo). Still valid, return what we have.
+      return {
+        firstCommitDate: "",
+        lastCommitDate: "",
+        totalCommits: 0,
+        authorCommits: 0,
+        authorEmail: "",
+        hasUncommittedChanges,
+      };
     }
 
     let firstCommitDate = "";
@@ -227,6 +243,7 @@ export async function extractGitMetadata(
       totalCommits,
       authorCommits,
       authorEmail: matchedEmail,
+      hasUncommittedChanges,
     };
   } catch {
     return null;

@@ -19,7 +19,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
   const [selected, setSelected] = useState<Set<string>>(
     new Set(
       projects
-        .filter((p) => p.authorCommitCount > 0 || !p.hasGit || p.commitCount === 0)
+        .filter((p) => p.authorCommitCount > 0 || !p.hasGit || p.commitCount === 0 || p.hasUncommittedChanges)
         .map((p) => p.id)
     )
   );
@@ -228,7 +228,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
         const dateStr = p.dateRange.start ? `${p.dateRange.approximate ? "~" : ""}${p.dateRange.start}` : "?";
         const secrets = p.privacyAudit?.secretsFound ?? 0;
         const hasMyCommits = p.authorCommitCount > 0;
-        const isMyProject = hasMyCommits || !p.hasGit;
+        const isMyProject = hasMyCommits || !p.hasGit || p.commitCount === 0 || p.hasUncommittedChanges;
         const nameColor = isCursor ? "cyan" : isMyProject ? undefined : "gray";
 
         return (
@@ -238,6 +238,9 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
             </Text>
             {hasMyCommits && <Text color="green">★ {p.authorCommitCount} my / {p.commitCount} total</Text>}
             {!p.hasGit && <Text dimColor>no git</Text>}
+            {p.hasUncommittedChanges && !hasMyCommits && (
+              <Text color="magenta">uncommitted changes</Text>
+            )}
             <Text dimColor>{p.language} {dateStr}</Text>
             {secrets > 0 && <Text color="yellow">!</Text>}
           </Box>

@@ -20,6 +20,7 @@ export interface Project {
   hasGit: boolean;
   commitCount: number;
   authorCommitCount: number;
+  hasUncommittedChanges: boolean;
   lastCommit?: string;
   markers: string[];
   size: { files: number; lines: number };
