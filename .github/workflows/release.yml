@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bun run build:npm
+      - run: bun test
+      - uses: JS-DevTools/npm-publish@v3
+        with:
+          token: ${{ secrets.NPM_TOKEN }}
+
+  build-binaries:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: bun-darwin-arm64
+            artifact: agent-cv-darwin-arm64
+          - os: macos-13
+            target: bun-darwin-x64
+            artifact: agent-cv-darwin-x64
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            artifact: agent-cv-linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bun build src/cli.ts --compile --outfile dist/${{ matrix.artifact }} --minify --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+
+  create-release:
+    needs: [publish-npm, build-binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/agent-cv-darwin-arm64/agent-cv-darwin-arm64
+            artifacts/agent-cv-darwin-x64/agent-cv-darwin-x64
+            artifacts/agent-cv-linux-x64/agent-cv-linux-x64
+          generate_release_notes: true
