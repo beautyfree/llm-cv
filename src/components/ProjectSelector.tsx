@@ -95,10 +95,20 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
       return { total, selected: sel };
     }
 
+    // Find minimum depth to make indentation relative
+    let minDepth = Infinity;
+    for (const [groupPath] of filteredGroups) {
+      if (isHiddenByParent(groupPath)) continue;
+      const d = groupPath === "." ? 0 : groupPath.split("/").length;
+      if (d < minDepth) minDepth = d;
+    }
+    if (minDepth === Infinity) minDepth = 0;
+
     for (const [groupPath, items] of filteredGroups) {
       if (isHiddenByParent(groupPath)) continue;
 
-      const depth = groupPath === "." ? 0 : groupPath.split("/").length;
+      const absDepth = groupPath === "." ? 0 : groupPath.split("/").length;
+      const depth = absDepth - minDepth;
       const { total, selected: sel } = countNested(groupPath);
       result.push({ kind: "group", path: groupPath, count: total, selectedCount: sel, depth });
 
@@ -262,7 +272,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
           const allChecked = row.selectedCount === row.count;
           const someChecked = row.selectedCount > 0;
           const checkbox = allChecked ? "[x]" : someChecked ? "[-]" : "[ ]";
-          const indent = "  ".repeat(row.depth);
+          const indent = "    ".repeat(row.depth);
           return (
             <Box key={`g-${row.path}`} gap={1}>
               <Text color={isCursor ? "cyan" : "white"} bold inverse={isCursor}>
@@ -283,7 +293,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
         const hasMyCommits = p.authorCommitCount > 0;
         const isMyProject = hasMyCommits || !p.hasGit || p.commitCount === 0 || p.hasUncommittedChanges;
         const nameColor = isCursor ? "cyan" : isMyProject ? undefined : "gray";
-        const indent = "  ".repeat(row.depth);
+        const indent = "    ".repeat(row.depth);
 
         return (
           <Box key={p.id} gap={1}>
