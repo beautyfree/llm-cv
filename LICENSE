@@ -1,23 +1,29 @@
-Copyright (c) 2026-present agent-cv. All rights reserved.
+Agent CV Source Available License (ACSAL) version 1.0
 
-This software is the proprietary property of agent-cv. The source code
-is made available for transparency and educational purposes only.
+Copyright (c) 2026-present agent-cv
 
-You MAY:
-- View and study the source code
-- Use the official published agent-cv CLI package for personal and
-  commercial purposes
-- Report bugs and submit pull requests to this repository
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to use, copy, and modify the Software for any purpose,
+including commercial use, subject to the following conditions:
 
-You MAY NOT:
-- Copy, fork, or reproduce substantial portions of the code
-- Create derivative works based on this software
-- Use the code, in whole or in part, in other projects or products
-- Redistribute the software outside of official agent-cv channels
-- Reverse engineer the distributed binaries
+1. You MAY use the Software to generate CVs, portfolios, and related
+   documents for yourself, your team, or your clients.
 
-Use of the official agent-cv CLI is subject to the agent-cv Terms of
-Service at https://agent-cv.dev/terms.
+2. You MAY NOT use the Software, or any derivative work, to operate a
+   service that competes with agent-cv.dev. A competing service is
+   defined as a hosted product that accepts project data and generates
+   CVs, portfolios, or developer profile pages as a service to third
+   parties.
+
+3. You MAY NOT sell, sublicense, or distribute the Software as a
+   standalone commercial product.
+
+4. You MAY fork, modify, and publish patches. All derivative works
+   must retain this license and copyright notice.
+
+5. You MAY use the Software in internal tools, CI/CD pipelines, and
+   private workflows without restriction.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
@@ -27,4 +33,4 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-For commercial licensing inquiries, contact hello@agent-cv.dev.
+For questions about commercial licensing, contact hello@agent-cv.dev.
