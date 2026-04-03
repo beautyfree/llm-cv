@@ -11,6 +11,12 @@ import { buildProjectContext } from "../lib/analysis/context-builder.ts";
 import { ClaudeAdapter } from "../lib/analysis/claude-adapter.ts";
 import { MarkdownRenderer } from "../lib/output/markdown-renderer.ts";
 import { ProjectSelector } from "../components/ProjectSelector.tsx";
+import { EmailPicker } from "../components/EmailPicker.tsx";
+import { readConfig, writeConfig } from "../lib/config.ts";
+import {
+  collectUserEmails,
+  collectAllRepoEmails,
+} from "../lib/discovery/git-metadata.ts";
 import type { Project, Inventory } from "../lib/types.ts";
 
 export const args = z.tuple([
@@ -23,7 +29,7 @@ export const options = z.object({
   noCache: z.boolean().default(false).describe("Force fresh analysis, ignore cache"),
   dryRun: z.boolean().default(false).describe("Show what would be sent to the LLM without sending"),
   all: z.boolean().default(false).describe("Skip interactive selection, analyze all projects"),
-  email: z.string().optional().describe("Additional git email to recognize as yours (comma-separated for multiple)"),
+  email: z.string().optional().describe("Email(s) to filter by, for generating someone else's CV (comma-separated)"),
 });
 
 type Props = {
@@ -33,6 +39,8 @@ type Props = {
 
 type Phase =
   | "scanning"
+  | "picking-emails"
+  | "rescanning"
   | "selecting"
   | "checking-agent"
   | "analyzing"
@@ -53,12 +61,94 @@ export default function Generate({
   const [markdown, setMarkdown] = useState("");
   const [error, setError] = useState("");
 
-  // Phase 1: Scan
+  // Email picker state
+  const [emailCounts, setEmailCounts] = useState<Map<string, number>>(new Map());
+  const [gitConfigEmails, setGitConfigEmails] = useState<Set<string>>(new Set());
+  const [confirmedEmails, setConfirmedEmails] = useState<string[]>([]);
+
+  // Phase 1: Initial scan + email resolution
   useEffect(() => {
-    async function scan() {
+    async function initialScan() {
       try {
-        const emails = email ? email.split(",").map((e) => e.trim()) : [];
-        const scanResult = await scanDirectory(directory, { verbose: false, emails });
+        // If --email is provided, use those directly (generating for someone else)
+        if (email) {
+          const emails = email.split(",").map((e) => e.trim());
+          setConfirmedEmails(emails);
+          setPhase("rescanning");
+          return;
+        }
+
+        // Check saved config
+        const config = await readConfig();
+        if (config.emailsConfirmed && config.emails.length > 0) {
+          setConfirmedEmails(config.emails);
+          setPhase("rescanning");
+          return;
+        }
+
+        // No saved emails. Do a quick scan to discover all emails from repos.
+        const scanResult = await scanDirectory(directory, { verbose: false, emails: [] });
+
+        if (scanResult.projects.length === 0) {
+          setError(`No projects found in ${directory}`);
+          setPhase("error");
+          return;
+        }
+
+        // Collect all emails from git shortlog across all scanned repos
+        const gitDirs = scanResult.projects
+          .filter((p) => p.hasGit)
+          .map((p) => p.path);
+        const allEmails = await collectAllRepoEmails(gitDirs);
+        const configEmails = await collectUserEmails([]);
+
+        if (allEmails.size <= 1) {
+          // Only one email (or zero) found, no ambiguity
+          const emails = allEmails.size === 1
+            ? [...allEmails.keys()]
+            : [...configEmails];
+          setConfirmedEmails(emails);
+
+          // Save it so we don't ask again
+          if (emails.length > 0) {
+            await writeConfig({ emails, emailsConfirmed: true });
+          }
+
+          setPhase("rescanning");
+          return;
+        }
+
+        // Multiple emails found. Show picker.
+        setEmailCounts(allEmails);
+        setGitConfigEmails(configEmails);
+        setPhase("picking-emails");
+      } catch (err: any) {
+        setError(err.message);
+        setPhase("error");
+      }
+    }
+    initialScan();
+  }, [directory, email]);
+
+  // Handle email picker submit
+  const handleEmailPick = useCallback(async (selected: string[], save: boolean) => {
+    setConfirmedEmails(selected);
+    if (save) {
+      await writeConfig({ emails: selected, emailsConfirmed: true });
+    }
+    setPhase("rescanning");
+  }, []);
+
+  // Phase 2: Rescan with confirmed emails
+  useEffect(() => {
+    if (phase !== "rescanning") return;
+
+    async function rescan() {
+      try {
+        const scanResult = await scanDirectory(directory, {
+          verbose: false,
+          emails: confirmedEmails,
+        });
 
         if (scanResult.projects.length === 0) {
           setError(`No projects found in ${directory}`);
@@ -81,7 +171,6 @@ export default function Generate({
         setAllProjects(available);
 
         if (selectAll) {
-          // --all flag: skip selection
           setSelectedProjects(available);
           setPhase("checking-agent");
         } else {
@@ -92,10 +181,10 @@ export default function Generate({
         setPhase("error");
       }
     }
-    scan();
-  }, [directory, selectAll]);
+    rescan();
+  }, [phase, confirmedEmails, directory, selectAll]);
 
-  // Handle selection submit
+  // Handle project selection submit
   const handleSelection = useCallback((selected: Project[]) => {
     if (selected.length === 0) {
       setError("No projects selected.");
@@ -106,7 +195,7 @@ export default function Generate({
     setPhase("checking-agent");
   }, []);
 
-  // Phase 2+3+4: Agent check, analyze, render
+  // Phase 3+4+5: Agent check, analyze, render
   useEffect(() => {
     if (phase !== "checking-agent") return;
 
@@ -125,7 +214,6 @@ export default function Generate({
           return;
         }
 
-        // Analyze
         setPhase("analyzing");
         const toAnalyze = noCache
           ? selectedProjects
@@ -166,12 +254,10 @@ export default function Generate({
           setProgress({ done: i + 1, total: toAnalyze.length });
         }
 
-        // Save
         if (!dryRun && inventory) {
           await writeInventory(inventory);
         }
 
-        // Render
         setPhase("rendering");
         const renderer = new MarkdownRenderer();
         const md = renderer.render(
@@ -193,7 +279,7 @@ export default function Generate({
     analyzeAndRender();
   }, [phase, selectedProjects, agent, noCache, dryRun, output, inventory]);
 
-  // Render based on phase
+  // Render
   if (phase === "error") {
     return <Text color="red">Error: {error}</Text>;
   }
@@ -202,9 +288,27 @@ export default function Generate({
     return <Text color="yellow">Scanning {directory} for projects...</Text>;
   }
 
+  if (phase === "picking-emails") {
+    return (
+      <EmailPicker
+        emailCounts={emailCounts}
+        preSelected={gitConfigEmails}
+        onSubmit={handleEmailPick}
+      />
+    );
+  }
+
+  if (phase === "rescanning") {
+    return <Text color="yellow">Identifying your projects...</Text>;
+  }
+
   if (phase === "selecting") {
     return (
-      <ProjectSelector projects={allProjects} scanRoot={directory} onSubmit={handleSelection} />
+      <ProjectSelector
+        projects={allProjects}
+        scanRoot={directory}
+        onSubmit={handleSelection}
+      />
     );
   }
 
@@ -227,7 +331,6 @@ export default function Generate({
     return <Text color="yellow">Generating CV...</Text>;
   }
 
-  // Done
   const analyzed = selectedProjects.filter((p) => p.analysis).length;
   const secrets = selectedProjects.reduce(
     (n, p) => n + (p.privacyAudit?.secretsFound ?? 0),

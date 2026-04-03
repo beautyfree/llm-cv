@@ -83,6 +83,37 @@ export async function discoverRepoLocalEmail(
 }
 
 /**
+ * Collect ALL unique email addresses found across scanned repos.
+ * Used to show the user a "pick your emails" list.
+ * Returns a map of email → number of repos it appears in.
+ */
+export async function collectAllRepoEmails(
+  dirs: string[]
+): Promise<Map<string, number>> {
+  const emailCounts = new Map<string, number>();
+
+  for (const dir of dirs) {
+    try {
+      const git = simpleGit(dir);
+      const isRepo = await git.checkIsRepo();
+      if (!isRepo) continue;
+
+      const shortlog = await git.raw(["shortlog", "-sne", "--no-merges", "HEAD"]);
+      for (const line of shortlog.split("\n")) {
+        const match = line.match(/<(.+?)>/);
+        if (!match?.[1]) continue;
+        const email = match[1].toLowerCase();
+        emailCounts.set(email, (emailCounts.get(email) || 0) + 1);
+      }
+    } catch {
+      // skip repos that fail
+    }
+  }
+
+  return emailCounts;
+}
+
+/**
  * Extract git metadata from a repository.
  * Counts commits matching ANY of the user's known emails.
  */
