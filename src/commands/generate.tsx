@@ -12,6 +12,7 @@ import { resolveAdapter } from "../lib/analysis/resolve-adapter.ts";
 import { MarkdownRenderer } from "../lib/output/markdown-renderer.ts";
 import { ProjectSelector } from "../components/ProjectSelector.tsx";
 import { EmailPicker } from "../components/EmailPicker.tsx";
+import { AgentPicker } from "../components/AgentPicker.tsx";
 import { readConfig, writeConfig } from "../lib/config.ts";
 import {
   collectUserEmails,
@@ -27,7 +28,7 @@ export const args = z.tuple([
 
 export const options = z.object({
   output: z.string().optional().describe("Output file path (default: stdout)"),
-  agent: z.string().default("auto").describe("Agent to use: auto, claude, codex, api"),
+  agent: z.string().default("auto").describe("Agent to use: auto, claude, codex, cursor, api (auto = show picker)"),
   noCache: z.boolean().default(false).describe("Force fresh analysis, ignore cache"),
   dryRun: z.boolean().default(false).describe("Show what would be sent to the LLM without sending"),
   all: z.boolean().default(false).describe("Skip interactive selection, analyze all projects"),
@@ -44,7 +45,7 @@ type Phase =
   | "picking-emails"
   | "recounting"
   | "selecting"
-  | "checking-agent"
+  | "picking-agent"
   | "analyzing"
   | "rendering"
   | "done"
@@ -67,6 +68,10 @@ export default function Generate({
   const [scanCount, setScanCount] = useState(0);
   const [scanDir, setScanDir] = useState("");
   const [lastFound, setLastFound] = useState("");
+
+  // Agent state
+  const [resolvedAdapter, setResolvedAdapter] = useState<import("../lib/types.ts").AgentAdapter | null>(null);
+  const [resolvedAgentName, setResolvedAgentName] = useState("");
 
   // Email state
   const [emailCounts, setEmailCounts] = useState<Map<string, number>>(new Map());
@@ -191,7 +196,7 @@ export default function Generate({
 
         if (selectAll) {
           setSelectedProjects(projects);
-          setPhase("checking-agent");
+          setPhase("picking-agent");
         } else {
           setPhase("selecting");
         }
@@ -204,33 +209,49 @@ export default function Generate({
   }, [phase, confirmedEmails, allProjects, inventory, selectAll]);
 
   // Handle project selection submit
-  const handleSelection = useCallback((selected: Project[]) => {
+  const handleSelection = useCallback(async (selected: Project[]) => {
     if (selected.length === 0) {
       setError("No projects selected.");
       setPhase("error");
       return;
     }
     setSelectedProjects(selected);
-    setPhase("checking-agent");
-  }, []);
 
-  // Phase 3+4: Agent check, analyze, render
+    // If agent explicitly set (not "auto"), skip picker
+    if (agent !== "auto") {
+      try {
+        const { adapter, name } = await resolveAdapter(agent);
+        setResolvedAdapter(adapter);
+        setResolvedAgentName(name);
+        setPhase("analyzing");
+      } catch (err: any) {
+        setError(err.message);
+        setPhase("error");
+      }
+      return;
+    }
+
+    setPhase("picking-agent");
+  }, [agent]);
+
+  // Handle agent picker submit
+  const handleAgentPick = useCallback(
+    (adapter: import("../lib/types.ts").AgentAdapter, name: string) => {
+      setResolvedAdapter(adapter);
+      setResolvedAgentName(name);
+      setPhase("analyzing");
+    },
+    []
+  );
+
+  // Phase 3+4: Analyze + render
   useEffect(() => {
-    if (phase !== "checking-agent") return;
+    if (phase !== "analyzing" || !resolvedAdapter) return;
 
     async function analyzeAndRender() {
       try {
-        let resolved;
-        try {
-          resolved = await resolveAdapter(agent);
-        } catch (err: any) {
-          setError(err.message);
-          setPhase("error");
-          return;
-        }
-        const adapter = resolved.adapter;
+        const adapter = resolvedAdapter!;
 
-        setPhase("analyzing");
         const toAnalyze = noCache
           ? selectedProjects
           : selectedProjects.filter((p) => !p.analysis);
@@ -291,7 +312,7 @@ export default function Generate({
       }
     }
     analyzeAndRender();
-  }, [phase, selectedProjects, agent, noCache, dryRun, output, inventory]);
+  }, [phase, selectedProjects, resolvedAdapter, noCache, dryRun, output, inventory]);
 
   // Render
   if (phase === "error") {
@@ -343,8 +364,8 @@ export default function Generate({
     );
   }
 
-  if (phase === "checking-agent") {
-    return <Text color="yellow">Checking agent availability...</Text>;
+  if (phase === "picking-agent") {
+    return <AgentPicker onSubmit={handleAgentPick} />;
   }
 
   if (phase === "analyzing") {
