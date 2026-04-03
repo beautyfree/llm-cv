@@ -23,7 +23,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
   const { exit } = useApp();
   const [cursor, setCursor] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(
-    new Set(projects.map((p) => p.id))
+    new Set(projects.filter((p) => p.authorCommitCount > 0).map((p) => p.id))
   );
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
