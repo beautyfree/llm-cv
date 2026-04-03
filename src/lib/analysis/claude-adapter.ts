@@ -58,13 +58,29 @@ export class ClaudeAdapter implements AgentAdapter {
 }
 
 function buildPrompt(context: ProjectContext): string {
-  const parts: string[] = [
-    "Analyze this software project and respond with ONLY a JSON object (no markdown, no explanation).",
-    "",
-    "The JSON must have this exact structure:",
-    '{"summary": "2-3 sentence description of what this project does", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature or achievement 1", "Key feature or achievement 2"]}',
-    "",
-  ];
+  const hasHistory = !!context.previousAnalysis;
+  const parts: string[] = [];
+
+  if (hasHistory) {
+    parts.push(
+      "This project was previously analyzed. Here is the prior result:",
+      JSON.stringify(context.previousAnalysis, null, 2),
+      "",
+      "The project has changed since then. Update the analysis: keep what's still accurate, revise what changed, add new contributions from recent commits.",
+      "Respond with ONLY a JSON object (no markdown, no explanation).",
+      "",
+      '{"summary": "2-3 sentence description", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature or achievement 1", "Key feature or achievement 2"]}',
+      "",
+    );
+  } else {
+    parts.push(
+      "Analyze this software project and respond with ONLY a JSON object (no markdown, no explanation).",
+      "",
+      "The JSON must have this exact structure:",
+      '{"summary": "2-3 sentence description of what this project does", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature or achievement 1", "Key feature or achievement 2"]}',
+      "",
+    );
+  }
 
   if (context.readme) {
     parts.push("=== README ===", context.readme, "");

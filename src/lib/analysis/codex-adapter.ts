@@ -44,11 +44,18 @@ export class CodexAdapter implements AgentAdapter {
 }
 
 function buildPrompt(context: ProjectContext): string {
-  const parts: string[] = [
-    "Analyze this software project. Respond with ONLY a JSON object:",
-    '{"summary": "2-3 sentence description", "techStack": ["Tech1"], "contributions": ["Feature 1"]}',
-    "",
-  ];
+  const parts: string[] = [];
+
+  if (context.previousAnalysis) {
+    parts.push(
+      "Previous analysis:", JSON.stringify(context.previousAnalysis, null, 2), "",
+      "Project changed since. Update the analysis. Respond with ONLY JSON:",
+    );
+  } else {
+    parts.push("Analyze this software project. Respond with ONLY a JSON object:");
+  }
+
+  parts.push('{"summary": "2-3 sentence description", "techStack": ["Tech1"], "contributions": ["Feature 1"]}', "");
   if (context.readme) parts.push("README:", context.readme.slice(0, 2000), "");
   if (context.dependencies) parts.push("DEPS:", context.dependencies.slice(0, 1000), "");
   if (context.recentCommits) parts.push("COMMITS:", context.recentCommits.slice(0, 1000));

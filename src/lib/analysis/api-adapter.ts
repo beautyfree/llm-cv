@@ -134,12 +134,26 @@ export class APIAdapter implements AgentAdapter {
 }
 
 function buildPrompt(context: ProjectContext): string {
-  const parts: string[] = [
-    "Analyze this software project and respond with ONLY a JSON object (no markdown, no explanation).",
-    "",
-    '{"summary": "2-3 sentence description", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature 1", "Key feature 2"]}',
-    "",
-  ];
+  const parts: string[] = [];
+
+  if (context.previousAnalysis) {
+    parts.push(
+      "This project was previously analyzed:",
+      JSON.stringify(context.previousAnalysis, null, 2),
+      "",
+      "The project has changed since then. Update the analysis: keep what's still accurate, add new contributions.",
+      "Respond with ONLY a JSON object:",
+      '{"summary": "2-3 sentence description", "techStack": ["Tech1"], "contributions": ["Feature 1"]}',
+      "",
+    );
+  } else {
+    parts.push(
+      "Analyze this software project and respond with ONLY a JSON object (no markdown, no explanation).",
+      "",
+      '{"summary": "2-3 sentence description", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature 1", "Key feature 2"]}',
+      "",
+    );
+  }
 
   if (context.readme) parts.push("=== README ===", context.readme, "");
   if (context.dependencies) parts.push("=== DEPENDENCIES ===", context.dependencies, "");

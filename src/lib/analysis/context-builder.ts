@@ -39,6 +39,7 @@ export async function buildProjectContext(
     directoryTree,
     gitShortlog,
     recentCommits,
+    previousAnalysis: project.analysis,
   };
 }
 

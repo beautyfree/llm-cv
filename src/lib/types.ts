@@ -66,6 +66,8 @@ export interface ProjectContext {
   directoryTree: string;
   gitShortlog: string;
   recentCommits: string;
+  /** Previous analysis result, if this is a re-analysis */
+  previousAnalysis?: ProjectAnalysis;
 }
 
 export interface OutputRenderer {

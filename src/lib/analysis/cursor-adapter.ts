@@ -47,13 +47,19 @@ export class CursorAdapter implements AgentAdapter {
 }
 
 function buildPrompt(context: ProjectContext): string {
-  const parts: string[] = [
-    "Analyze this software project and respond with ONLY a JSON object (no markdown, no explanation).",
-    "",
-    '{"summary": "2-3 sentence description", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature 1", "Key feature 2"]}',
-    "",
-  ];
+  const parts: string[] = [];
 
+  if (context.previousAnalysis) {
+    parts.push(
+      "Previous analysis:", JSON.stringify(context.previousAnalysis, null, 2), "",
+      "Project changed since. Update the analysis: keep what's accurate, add new contributions.",
+      "Respond with ONLY a JSON object:",
+    );
+  } else {
+    parts.push("Analyze this software project and respond with ONLY a JSON object (no markdown, no explanation).", "");
+  }
+
+  parts.push('{"summary": "2-3 sentence description", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature 1", "Key feature 2"]}', "");
   if (context.readme) parts.push("=== README ===", context.readme, "");
   if (context.dependencies) parts.push("=== DEPENDENCIES ===", context.dependencies, "");
   if (context.directoryTree) parts.push("=== DIRECTORY STRUCTURE ===", context.directoryTree, "");
