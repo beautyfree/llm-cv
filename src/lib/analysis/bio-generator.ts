@@ -156,7 +156,7 @@ async function generateFinalProfile(
     "",
     '{',
     '  "bio": "3-4 sentences",',
-    '  "highlights": ["project_name_1", "project_name_2", "project_name_3", "project_name_4", "project_name_5"],',
+    '  "highlights": {"2024": ["proj1", "proj2"], "2023": ["proj3", "proj4"], "2022": ["proj5"]},',
     '  "narrative": "2-3 sentences",',
     '  "strongestSkills": ["skill1", "skill2", "skill3", "skill4", "skill5"],',
     '  "uniqueTraits": ["trait1", "trait2", "trait3"]',
@@ -172,10 +172,11 @@ async function generateFinalProfile(
     "- Third person. No buzzwords. No jargon stacking.",
     "",
     "highlights:",
-    "- Pick 3-5 projects from DIFFERENT domains/areas. Show range, not depth in one org.",
-    "- MUST include projects from at least 2 different years.",
-    "- Prefer: starred repos, high impactScore, projects with unique/interesting purpose.",
-    "- Do NOT pick 3+ projects from the same organization or mono-repo.",
+    "- Object with year keys. Pick 1-3 best projects PER YEAR for years that have meaningful work.",
+    "- Show range: different domains across years.",
+    "- Prefer: high impactScore, starred repos, unique/interesting purpose.",
+    "- Do NOT pick multiple projects from the same mono-repo in one year.",
+    "- Only include years where there are genuine standout projects.",
     "",
     "narrative:",
     "- Tell the career STORY using the yearly evolution data. How did interests evolve?",
@@ -207,9 +208,31 @@ async function generateFinalProfile(
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
+      // highlights can be { "2024": ["a", "b"], "2023": ["c"] } or flat ["a", "b"]
+      let highlights: string[] = [];
+      if (parsed.highlights && typeof parsed.highlights === "object" && !Array.isArray(parsed.highlights)) {
+        // Per-year format — flatten to array but keep in yearly order (newest first)
+        const years = Object.keys(parsed.highlights).sort((a, b) => b.localeCompare(a));
+        for (const year of years) {
+          const yearProjects = parsed.highlights[year];
+          if (Array.isArray(yearProjects)) highlights.push(...yearProjects);
+        }
+      } else if (Array.isArray(parsed.highlights)) {
+        highlights = parsed.highlights;
+      }
+
+      // Preserve per-year structure if available
+      const highlightsByYear: Record<string, string[]> = {};
+      if (parsed.highlights && typeof parsed.highlights === "object" && !Array.isArray(parsed.highlights)) {
+        for (const [year, projs] of Object.entries(parsed.highlights)) {
+          if (Array.isArray(projs)) highlightsByYear[year] = projs;
+        }
+      }
+
       return {
         bio: parsed.bio || "",
-        highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
+        highlights,
+        highlightsByYear: Object.keys(highlightsByYear).length > 0 ? highlightsByYear : undefined,
         narrative: parsed.narrative || "",
         strongestSkills: Array.isArray(parsed.strongestSkills) ? parsed.strongestSkills : [],
         uniqueTraits: Array.isArray(parsed.uniqueTraits) ? parsed.uniqueTraits : [],

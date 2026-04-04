@@ -83,6 +83,8 @@ export interface YearlyTheme {
 export interface ProfileInsights {
   bio?: string;
   highlights?: string[];
+  /** Per-year highlight map, e.g. { "2024": ["proj1"], "2023": ["proj2"] } */
+  highlightsByYear?: Record<string, string[]>;
   narrative?: string;
   strongestSkills?: string[];
   uniqueTraits?: string[];

@@ -99,8 +99,21 @@ export default function Publish({ args, options }: Props) {
         setPhase("error");
         return;
       }
-      setInventory(inv);
       const projects = inv.projects.filter((p) => !p.tags.includes("removed") && p.included !== false);
+
+      // Ensure significance scores exist (may be missing if last run was cached)
+      const needsScoring = projects.some((p) => p.significance == null);
+      if (needsScoring) {
+        const { assignTiers } = await import("../lib/discovery/significance.ts");
+        const tiers = assignTiers(projects);
+        for (const p of inv.projects) {
+          const info = tiers.get(p.id);
+          if (info) { p.significance = info.score; p.tier = info.tier; }
+        }
+        await writeInventory(inv);
+      }
+
+      setInventory(inv);
       setSelectedProjects(projects);
       setPhase("checking-public");
     }
