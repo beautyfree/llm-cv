@@ -116,7 +116,7 @@ export default function Publish({ args, options }: Props) {
     setPhase("checking-public");
   }, []);
 
-  const [publicFlags, setPublicFlags] = useState<Record<string, boolean>>({});
+  const [publicFlags, setPublicFlags] = useState<Record<string, { isPublic: boolean; stars: number }>>({});
 
   // Step 5a: Check public repos
   useEffect(() => {
@@ -126,8 +126,13 @@ export default function Publish({ args, options }: Props) {
         setTotalCount(selectedProjects.length);
         setAnalyzedCount(selectedProjects.filter((p) => p.analysis).length);
         const flags = await checkPublicRepos(selectedProjects);
+        // Save stars to projects
+        for (const p of selectedProjects) {
+          const info = flags[p.id];
+          if (info) p.stars = info.stars;
+        }
         setPublicFlags(flags);
-        setPublicCount(Object.values(flags).filter(Boolean).length);
+        setPublicCount(Object.values(flags).filter((f) => f.isPublic).length);
         if (options.yes) {
           doPublish();
           return;
@@ -138,12 +143,11 @@ export default function Publish({ args, options }: Props) {
     check();
   }, [phase, selectedProjects]);
 
-  // Confirmation
+  // Confirmation — only active in confirming phase without --yes
   useInput((input, key) => {
-    if (phase !== "confirming") return;
     if (input === "y" || key.return) doPublish();
     else if (input === "n" || key.escape) { setError("Cancelled."); setPhase("error"); }
-  });
+  }, { isActive: phase === "confirming" && !options.yes });
 
   async function doPublish() {
     setPhase("publishing");
@@ -226,29 +230,32 @@ export default function Publish({ args, options }: Props) {
   );
 }
 
-async function checkPublicRepos(projects: Project[]): Promise<Record<string, boolean>> {
-  const flags: Record<string, boolean> = {};
+async function checkPublicRepos(projects: Project[]): Promise<Record<string, { isPublic: boolean; stars: number }>> {
+  const flags: Record<string, { isPublic: boolean; stars: number }> = {};
   const toCheck = projects.filter((p) => p.remoteUrl?.includes("github.com"));
   for (let i = 0; i < toCheck.length; i += 10) {
     const batch = toCheck.slice(i, i + 10);
     const results = await Promise.all(batch.map(async (p) => {
       try {
         const match = p.remoteUrl!.match(/github\.com\/([^/]+\/[^/]+)/);
-        if (!match) return { id: p.id, isPublic: false };
+        if (!match) return { id: p.id, isPublic: false, stars: 0 };
         const res = await fetch(`https://api.github.com/repos/${match[1]}`, { redirect: "follow", headers: { "User-Agent": "agent-cv" } });
-        if (res.status === 200) { const data = await res.json(); return { id: p.id, isPublic: !data.private }; }
-        return { id: p.id, isPublic: false };
-      } catch { return { id: p.id, isPublic: false }; }
+        if (res.status === 200) {
+          const data = await res.json();
+          return { id: p.id, isPublic: !data.private, stars: data.stargazers_count || 0 };
+        }
+        return { id: p.id, isPublic: false, stars: 0 };
+      } catch { return { id: p.id, isPublic: false, stars: 0 }; }
     }));
-    for (const r of results) flags[r.id] = r.isPublic;
+    for (const r of results) flags[r.id] = { isPublic: r.isPublic, stars: r.stars };
   }
-  for (const p of projects) { if (!(p.id in flags)) flags[p.id] = false; }
+  for (const p of projects) { if (!(p.id in flags)) flags[p.id] = { isPublic: false, stars: 0 }; }
   return flags;
 }
 
 function sanitizeForPublish(
   inventory: Inventory,
-  publicFlags: Record<string, boolean>,
+  publicFlags: Record<string, { isPublic: boolean; stars: number }>,
   bioOverride?: string
 ) {
   const { profile, insights } = inventory;
