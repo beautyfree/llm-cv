@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import { readInventory } from "../lib/inventory/store.ts";
+import { readInventory, writeInventory } from "../lib/inventory/store.ts";
+import { scanDirectory } from "../lib/discovery/scanner.ts";
 import {
   readAuthToken,
   startDeviceFlow,
@@ -12,13 +13,15 @@ import {
 import type { Inventory, Project } from "../lib/types.ts";
 import { exec } from "node:child_process";
 
-type Phase = "checking" | "auth" | "polling" | "reading" | "checking-public" | "publishing" | "done" | "error";
+type Phase = "checking" | "auth" | "polling" | "scanning" | "reading" | "checking-public" | "publishing" | "done" | "error";
 
 interface Props {
+  args?: string[];
   options: { bio?: string; noOpen?: boolean };
 }
 
-export default function Publish({ options }: Props) {
+export default function Publish({ args, options }: Props) {
+  const dir = args?.[0];
   const [phase, setPhase] = useState<Phase>("checking");
   const [userCode, setUserCode] = useState("");
   const [verificationUri, setVerificationUri] = useState("");
@@ -26,6 +29,8 @@ export default function Publish({ options }: Props) {
   const [error, setError] = useState("");
   const [publicCount, setPublicCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [scanCount, setScanCount] = useState(0);
+  const [analyzedCount, setAnalyzedCount] = useState(0);
 
   useEffect(() => {
     run();
@@ -33,17 +38,15 @@ export default function Publish({ options }: Props) {
 
   async function run() {
     try {
-      // 1. Check for existing token
+      // 1. Auth
       setPhase("checking");
       let auth = await readAuthToken();
 
-      // 2. Auth if needed
       if (!auth?.jwt) {
         setPhase("auth");
         const flow = await startDeviceFlow();
         setUserCode(flow.userCode);
         setVerificationUri(flow.verificationUri);
-
         try { exec(`open ${flow.verificationUri}`); } catch {}
 
         setPhase("polling");
@@ -61,24 +64,40 @@ export default function Publish({ options }: Props) {
         }
       }
 
-      // 3. Read inventory
-      setPhase("reading");
-      const inventory = await readInventory();
+      // 2. Smart scan: if dir provided, run scan first
+      let inventory = await readInventory();
 
+      if (dir) {
+        setPhase("scanning");
+        const { collectUserEmails } = await import("../lib/discovery/git-metadata.ts");
+        const userEmails = await collectUserEmails();
+        const scanned = await scanDirectory(dir, userEmails);
+        setScanCount(scanned.length);
+
+        // Merge with existing inventory
+        const { mergeInventory } = await import("../lib/inventory/store.ts");
+        inventory = mergeInventory(inventory, scanned, dir);
+        await writeInventory(inventory);
+      }
+
+      setPhase("reading");
       if (inventory.projects.length === 0) {
-        setError("No projects found. Run `agent-cv scan ~/Projects` first.");
+        setError("No projects found. Provide a directory: `agent-cv publish ~/Projects`");
         setPhase("error");
         return;
       }
 
-      // 4. Check which repos are public via GitHub API
+      const included = inventory.projects.filter((p) => p.included !== false);
+      const withAnalysis = included.filter((p) => p.analysis);
+      setAnalyzedCount(withAnalysis.length);
+      setTotalCount(included.length);
+
+      // 3. Check public/private
       setPhase("checking-public");
-      const projects = inventory.projects.filter((p) => p.included !== false);
-      setTotalCount(projects.length);
-      const publicFlags = await checkPublicRepos(projects);
+      const publicFlags = await checkPublicRepos(included);
       setPublicCount(Object.values(publicFlags).filter(Boolean).length);
 
-      // 5. Sanitize and publish
+      // 4. Publish
       setPhase("publishing");
       const payload = sanitizeForPublish(inventory, publicFlags, options.bio);
 
@@ -86,8 +105,6 @@ export default function Publish({ options }: Props) {
         const result = await publishToApi(auth!.jwt, payload);
         setResultUrl(result.url);
         setPhase("done");
-
-        // Auto-open browser
         if (!options.noOpen) {
           try { exec(`open ${result.url}`); } catch {}
         }
@@ -123,16 +140,12 @@ export default function Publish({ options }: Props) {
         <Box flexDirection="column" gap={1}>
           <Text color="gray">Waiting for authorization...</Text>
           <Text>Enter code: <Text bold color="yellow">{userCode}</Text></Text>
-          <Text color="gray">at {verificationUri}</Text>
         </Box>
       )}
 
-      {phase === "reading" && <Text color="gray">Reading inventory...</Text>}
-
-      {phase === "checking-public" && (
-        <Text color="gray">Checking public/private repos... ({publicCount}/{totalCount})</Text>
-      )}
-
+      {phase === "scanning" && <Text color="gray">Scanning {dir}...</Text>}
+      {phase === "reading" && <Text color="gray">Reading inventory ({totalCount} projects)...</Text>}
+      {phase === "checking-public" && <Text color="gray">Checking repos... ({publicCount}/{totalCount})</Text>}
       {phase === "publishing" && <Text color="gray">Publishing to agent-cv.dev...</Text>}
 
       {phase === "done" && (
@@ -142,7 +155,14 @@ export default function Publish({ options }: Props) {
             <Text bold>Your portfolio is live at</Text>
             <Text bold color="cyan">{resultUrl}</Text>
           </Box>
-          <Text color="gray">{publicCount} public repos, {totalCount - publicCount} private (URLs hidden)</Text>
+          <Text color="gray">
+            {totalCount} projects ({analyzedCount} with AI analysis) · {publicCount} public, {totalCount - publicCount} private
+          </Text>
+          {analyzedCount < totalCount && (
+            <Text color="yellow">
+              {totalCount - analyzedCount} projects without AI analysis. Run `agent-cv generate {dir || "~/Projects"}` to analyze them.
+            </Text>
+          )}
           <Text> </Text>
         </Box>
       )}
@@ -152,22 +172,10 @@ export default function Publish({ options }: Props) {
   );
 }
 
-/**
- * Check which projects have public GitHub repos.
- * Uses GitHub API with follow-redirects. Handles 301 (repo moved/renamed).
- * 200 = public, 404 = private or not found.
- * Only checks repos with GitHub remoteUrls, skips the rest.
- */
-async function checkPublicRepos(
-  projects: Project[]
-): Promise<Record<string, boolean>> {
+async function checkPublicRepos(projects: Project[]): Promise<Record<string, boolean>> {
   const flags: Record<string, boolean> = {};
+  const toCheck = projects.filter((p) => p.remoteUrl?.includes("github.com"));
 
-  const toCheck = projects.filter(
-    (p) => p.remoteUrl?.includes("github.com")
-  );
-
-  // Batch in parallel, 10 at a time
   for (let i = 0; i < toCheck.length; i += 10) {
     const batch = toCheck.slice(i, i + 10);
     const results = await Promise.all(
@@ -175,13 +183,10 @@ async function checkPublicRepos(
         try {
           const match = p.remoteUrl!.match(/github\.com\/([^/]+\/[^/]+)/);
           if (!match) return { id: p.id, isPublic: false };
-
-          // Use GET with redirect: "follow" to handle 301 (repo renamed/moved)
           const res = await fetch(`https://api.github.com/repos/${match[1]}`, {
             redirect: "follow",
             headers: { "User-Agent": "agent-cv" },
           });
-
           if (res.status === 200) {
             const data = await res.json();
             return { id: p.id, isPublic: !data.private };
@@ -198,36 +203,21 @@ async function checkPublicRepos(
   for (const p of projects) {
     if (!(p.id in flags)) flags[p.id] = false;
   }
-
   return flags;
 }
 
-function sanitizeForPublish(
-  inventory: Inventory,
-  publicFlags: Record<string, boolean>,
-  bio?: string
-) {
+function sanitizeForPublish(inventory: Inventory, publicFlags: Record<string, boolean>, bio?: string) {
   const projects = inventory.projects
     .filter((p) => p.included !== false)
     .map((p: Project) => {
       const isPublic = publicFlags[p.id] ?? false;
       return {
-        id: p.id,
-        displayName: p.displayName,
-        type: p.type,
-        language: p.language,
-        frameworks: p.frameworks,
-        dateRange: p.dateRange,
-        hasGit: p.hasGit,
-        commitCount: p.commitCount,
-        authorCommitCount: p.authorCommitCount,
-        hasUncommittedChanges: p.hasUncommittedChanges,
-        lastCommit: p.lastCommit,
-        analysis: p.analysis,
-        tags: p.tags,
-        included: true,
-        remoteUrl: isPublic ? p.remoteUrl : null,
-        isPublic,
+        id: p.id, displayName: p.displayName, type: p.type, language: p.language,
+        frameworks: p.frameworks, dateRange: p.dateRange, hasGit: p.hasGit,
+        commitCount: p.commitCount, authorCommitCount: p.authorCommitCount,
+        hasUncommittedChanges: p.hasUncommittedChanges, lastCommit: p.lastCommit,
+        analysis: p.analysis, tags: p.tags, included: true,
+        remoteUrl: isPublic ? p.remoteUrl : null, isPublic,
       };
     });
 

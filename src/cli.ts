@@ -76,12 +76,13 @@ program
 // publish
 program
   .command("publish")
-  .description("Publish your portfolio to agent-cv.dev")
+  .description("Scan, analyze, and publish your portfolio to agent-cv.dev")
+  .argument("[directory]", "Directory to scan (uses existing inventory if omitted)")
   .option("--bio <text>", "Custom bio/headline for your portfolio")
   .option("--no-open", "Don't open browser after publishing")
-  .action(async (opts: any) => {
+  .action(async (directory: string | undefined, opts: any) => {
     const { default: Publish } = await import("./commands/publish.tsx");
-    render(React.createElement(Publish, { options: opts }));
+    render(React.createElement(Publish, { args: directory ? [directory] : [], options: opts }));
   });
 
 // unpublish

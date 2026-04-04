@@ -8,17 +8,14 @@ Your real project history lives on your filesystem, not on GitHub. Pet projects 
 
 ```bash
 # Install
-bun install -g agent-cv
+npm install -g agent-cv
 
-# Scan your projects
-agent-cv scan ~/Projects
-
-# Generate a CV (interactive: pick emails, pick projects)
-agent-cv generate ~/Projects --output cv.md
-
-# Publish your portfolio to the web
-agent-cv publish
+# One command — scan, analyze, publish
+agent-cv publish ~/Projects
 # → Your portfolio is live at https://agent-cv.dev/yourusername
+
+# Or generate a markdown CV (offline)
+agent-cv generate ~/Projects --output cv.md
 
 # See your tech evolution
 agent-cv stats
