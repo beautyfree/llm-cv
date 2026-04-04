@@ -39,6 +39,7 @@ program
   .option("--all", "Skip project picker, include everything", false)
   .option("--agent <name>", "Agent to use: auto, claude, codex, cursor, api", "auto")
   .option("--email <emails>", "Email(s) to filter by (comma-separated)")
+  .option("-y, --yes", "Skip confirmation prompt", false)
   .action(async (directory: string | undefined, opts: any) => {
     const { default: Publish } = await import("./commands/publish.tsx");
     render(React.createElement(Publish, { args: directory ? [directory] : [], options: opts }));

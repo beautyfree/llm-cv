@@ -23,7 +23,7 @@ type Phase =
 
 interface Props {
   args?: string[];
-  options: { bio?: string; noOpen?: boolean; all?: boolean; agent?: string; email?: string };
+  options: { bio?: string; noOpen?: boolean; all?: boolean; agent?: string; email?: string; yes?: boolean };
 }
 
 export default function Publish({ args, options }: Props) {
@@ -128,6 +128,10 @@ export default function Publish({ args, options }: Props) {
         const flags = await checkPublicRepos(selectedProjects);
         setPublicFlags(flags);
         setPublicCount(Object.values(flags).filter(Boolean).length);
+        if (options.yes) {
+          doPublish();
+          return;
+        }
         setPhase("confirming");
       } catch (e: any) { setError(e.message); setPhase("error"); }
     }
