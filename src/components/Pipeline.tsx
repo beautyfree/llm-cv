@@ -10,6 +10,7 @@ import {
   collectEmails,
   recountAndTag,
   analyzeProjects,
+  type ProjectStatus,
 } from "../lib/pipeline.ts";
 import type { Project, Inventory, AgentAdapter } from "../lib/types.ts";
 
@@ -64,6 +65,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   // Analysis progress
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [current, setCurrent] = useState("");
+  const [projectStatuses, setProjectStatuses] = useState<Map<string, { status: ProjectStatus; detail?: string }>>(new Map());
 
   // Phase 1: Scan
   useEffect(() => {
@@ -189,6 +191,13 @@ export function Pipeline({ options, onComplete, onError }: Props) {
         const result = await analyzeProjects(selectedProjects, resolvedAdapter!, inventory!, {
           noCache, dryRun,
           onProgress: (done, total, cur) => { setProgress({ done, total }); setCurrent(cur); },
+          onProjectStatus: (id, status, detail) => {
+            setProjectStatuses((prev) => {
+              const next = new Map(prev);
+              next.set(id, { status, detail });
+              return next;
+            });
+          },
         });
 
         if (result.failed.length > 0) {
@@ -235,12 +244,64 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   if (phase === "recounting") return <Text color="yellow">Identifying your projects...</Text>;
   if (phase === "selecting") return <ProjectSelector projects={allProjects} scanRoot={directory} onSubmit={handleSelection} />;
   if (phase === "picking-agent") return <AgentPicker onSubmit={handleAgentPick} />;
-  if (phase === "analyzing") return (
-    <Box flexDirection="column">
-      <Text color="yellow">Analyzing [{progress.done}/{progress.total}]: {current}</Text>
-      {dryRun && <Text dimColor>(dry-run mode, no LLM calls)</Text>}
-    </Box>
-  );
+  if (phase === "analyzing") {
+    const statusIcon = (s: ProjectStatus) => {
+      switch (s) {
+        case "cached": return "✓";
+        case "done": return "✓";
+        case "analyzing": return "◌";
+        case "failed": return "✗";
+        case "queued": return "·";
+      }
+    };
+    const statusColor = (s: ProjectStatus) => {
+      switch (s) {
+        case "cached": return "gray";
+        case "done": return "green";
+        case "analyzing": return "yellow";
+        case "failed": return "red";
+        case "queued": return "gray";
+      }
+    };
+
+    // Show last ~15 projects (most recent activity visible)
+    const allEntries = [...projectStatuses.entries()]
+      .map(([id, { status, detail }]) => {
+        const p = selectedProjects.find((p) => p.id === id);
+        return { name: p?.displayName || id, status, detail };
+      });
+    const analyzing = allEntries.filter((e) => e.status === "analyzing");
+    const done = allEntries.filter((e) => e.status === "done" || e.status === "cached");
+    const failed = allEntries.filter((e) => e.status === "failed");
+    const queued = allEntries.filter((e) => e.status === "queued");
+
+    // Show: analyzing first, then last few done, then queued count
+    const visible = [
+      ...analyzing,
+      ...failed,
+      ...done.slice(-5),
+    ];
+
+    return (
+      <Box flexDirection="column">
+        <Text bold>Analyzing projects [{done.length}/{allEntries.length}]</Text>
+        {dryRun && <Text dimColor>(dry-run mode, no LLM calls)</Text>}
+        <Text> </Text>
+        {visible.map((entry) => (
+          <Box key={entry.name} gap={1}>
+            <Text color={statusColor(entry.status)}>{statusIcon(entry.status)}</Text>
+            <Text color={entry.status === "analyzing" ? "yellow" : entry.status === "failed" ? "red" : undefined}>
+              {entry.name}
+            </Text>
+            {entry.detail && entry.status === "done" && <Text dimColor>{entry.detail}</Text>}
+            {entry.detail && entry.status === "failed" && <Text color="red" dimColor>{entry.detail}</Text>}
+            {entry.status === "analyzing" && <Text color="yellow">analyzing...</Text>}
+          </Box>
+        ))}
+        {queued.length > 0 && <Text dimColor>{"\n"}  {queued.length} more in queue</Text>}
+      </Box>
+    );
+  }
   if (phase === "analysis-failed") {
     const analyzed = selectedProjects.length - failedProjects.length;
     return (

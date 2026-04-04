@@ -104,6 +104,8 @@ export interface AnalysisResult {
   skipped: number;
 }
 
+export type ProjectStatus = "queued" | "analyzing" | "done" | "failed" | "cached";
+
 export async function analyzeProjects(
   projects: Project[],
   adapter: AgentAdapter,
@@ -112,9 +114,10 @@ export async function analyzeProjects(
     noCache?: boolean;
     dryRun?: boolean;
     onProgress?: (done: number, total: number, current: string) => void;
+    onProjectStatus?: (projectId: string, status: ProjectStatus, detail?: string) => void;
   } = {}
 ): Promise<AnalysisResult> {
-  const { noCache = false, dryRun = false, onProgress } = options;
+  const { noCache = false, dryRun = false, onProgress, onProjectStatus } = options;
 
   const needsAnalysis = (p: Project) => {
     if (!p.analysis) return true;
@@ -125,7 +128,17 @@ export async function analyzeProjects(
   };
 
   const toAnalyze = noCache ? projects : projects.filter(needsAnalysis);
-  const skipped = projects.length - toAnalyze.length;
+  const cachedProjects = projects.filter((p) => !needsAnalysis(p));
+  const skipped = cachedProjects.length;
+
+  // Report cached projects
+  for (const p of cachedProjects) {
+    onProjectStatus?.(p.id, "cached");
+  }
+  // Report queued projects
+  for (const p of toAnalyze) {
+    onProjectStatus?.(p.id, "queued");
+  }
   const BATCH_SIZE = 3;
   let completed = 0;
   let analyzedOk = 0;
@@ -148,6 +161,7 @@ export async function analyzeProjects(
 
     await Promise.all(
       batch.map(async (project) => {
+        onProjectStatus?.(project.id, "analyzing");
         try {
           const context = await buildProjectContext(project);
           const analysis = await adapter.analyze(context);
@@ -155,8 +169,10 @@ export async function analyzeProjects(
           analysis.promptVersion = PROMPT_VERSION;
           project.analysis = analysis;
           analyzedOk++;
+          onProjectStatus?.(project.id, "done", analysis.summary?.slice(0, 60));
         } catch (err: any) {
           failed.push({ project, error: err.message });
+          onProjectStatus?.(project.id, "failed", err.message.slice(0, 60));
         }
       })
     );

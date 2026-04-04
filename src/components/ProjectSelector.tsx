@@ -38,7 +38,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
   }
 
   // Reserved keys that do NOT type into search
-  const RESERVED = new Set([" ", "a", "s", "q", "u", "r"]);
+  const RESERVED = new Set([" ", "a", "q", "u", "r"]);
 
   // Group projects by parent directory
   const groups = useMemo(() => {
@@ -213,17 +213,19 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
       return;
     }
 
-    // Space: toggle
+    // Space: toggle selection
     if (input === " ") { toggleCurrent(); return; }
 
-    // Enter: collapse group or submit
-    if (key.return) {
+    // Tab / Right / Left: collapse/expand group
+    if (key.tab || key.rightArrow || key.leftArrow) {
       const row = rows[cursor];
       if (row?.kind === "group") {
+        const shouldCollapse = key.leftArrow ? true : key.rightArrow ? false : undefined;
         setCollapsed((prev) => {
           const next = new Set(prev);
-          if (next.has(row.path)) {
-            // Expand: remove this group and all nested from collapsed
+          if (shouldCollapse === true || (!shouldCollapse && !next.has(row.path))) {
+            next.add(row.path);
+          } else {
             next.delete(row.path);
             const prefix = row.path === "." ? "" : row.path + "/";
             if (prefix) {
@@ -231,14 +233,15 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
                 if (key.startsWith(prefix)) next.delete(key);
               }
             }
-          } else {
-            // Collapse: add this group (nested groups hidden automatically)
-            next.add(row.path);
           }
           return next;
         });
-        return;
       }
+      return;
+    }
+
+    // Enter: submit
+    if (key.return) {
       const result = projects.filter((p) => selected.has(p.id));
       onSubmit(result);
       return;
@@ -250,6 +253,8 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
         pushUndo();
         if (selected.size === projects.length) setSelected(new Set());
         else setSelected(new Set(projects.map((p) => p.id)));
+      } else if (input === "q") {
+        exit();
       } else if (input === "u") {
         setUndoStack((stack) => {
           if (stack.length === 0) return stack;
@@ -260,10 +265,6 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
       } else if (input === "r") {
         pushUndo();
         setSelected(new Set(initialSelection));
-      } else if (input === "s") {
-        onSubmit(projects.filter((p) => selected.has(p.id)));
-      } else if (input === "q") {
-        exit();
       }
       return;
     }
@@ -317,7 +318,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
           )}
         </Text>
         <Text dimColor>
-          [Space] toggle  [Enter] expand/collapse  [s] submit  [a] all  [u] undo  [r] reset  Type to search
+          [Space] toggle  [Tab] expand/collapse  [Enter] submit  [a] all  [u] undo  [r] reset  Type to search
         </Text>
         <Text dimColor>
           <Text color="green">★</Text> = your commits  <Text color="yellow">!</Text> = secrets excluded  <Text color="gray">gray</Text> = not yours
