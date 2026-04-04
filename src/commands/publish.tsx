@@ -255,6 +255,7 @@ function sanitizeForPublish(
     narrative: insights.narrative,
     strongestSkills: insights.strongestSkills,
     uniqueTraits: insights.uniqueTraits,
+    yearlyThemes: insights.yearlyThemes,
   };
 }
 

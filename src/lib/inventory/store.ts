@@ -193,6 +193,10 @@ export function mergeInventory(
         privacyAudit: updated.privacyAudit, // use fresh audit
         tags: project.tags, // keep user tags
         included: project.included, // keep user selection
+        significance: project.significance, // keep score
+        tier: project.tier, // keep tier
+        stars: project.stars, // keep GitHub data
+        isPublic: project.isPublic,
       });
       scannedById.delete(project.id);
     } else {

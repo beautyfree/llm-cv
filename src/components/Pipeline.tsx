@@ -218,6 +218,16 @@ export function Pipeline({ options, onComplete, onError }: Props) {
         if (!dryRun) {
           setCurrent("fetching GitHub data...");
           await enrichGitHubData(selectedProjects);
+        }
+
+        // Calculate significance scores and assign tiers
+        if (!dryRun) {
+          const { assignTiers } = await import("../lib/discovery/significance.ts");
+          const tiers = assignTiers(selectedProjects);
+          for (const p of selectedProjects) {
+            const info = tiers.get(p.id);
+            if (info) { p.significance = info.score; p.tier = info.tier; }
+          }
           if (inventory) await writeInventory(inventory);
         }
 
@@ -229,9 +239,8 @@ export function Pipeline({ options, onComplete, onError }: Props) {
             .digest("hex");
 
           if (fingerprint !== inventory.insights._fingerprint) {
-            setCurrent("generating profile insights...");
             try {
-              const insights = await generateProfileInsights(selectedProjects, resolvedAdapter!);
+              const insights = await generateProfileInsights(selectedProjects, resolvedAdapter!, (step) => setCurrent(step));
               if (insights) {
                 inventory.insights = { ...insights, _fingerprint: fingerprint };
               }

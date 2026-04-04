@@ -34,6 +34,8 @@ export interface Project {
   remoteUrl?: string;
   isPublic?: boolean;
   stars?: number;
+  significance?: number;
+  tier?: "primary" | "secondary" | "minor";
   authorEmail?: string;
 }
 
@@ -70,12 +72,19 @@ export interface Socials {
   website?: string;
 }
 
+export interface YearlyTheme {
+  year: string;
+  focus: string;
+  topProjects: string[];
+}
+
 export interface ProfileInsights {
   bio?: string;
   highlights?: string[];
   narrative?: string;
   strongestSkills?: string[];
   uniqueTraits?: string[];
+  yearlyThemes?: YearlyTheme[];
   /** MD5 hash of analyzed projects. Triggers regeneration when changed. */
   _fingerprint?: string;
 }
