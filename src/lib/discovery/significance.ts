@@ -59,26 +59,39 @@ export function calculateSignificance(p: Project): number {
 }
 
 /**
- * Assign tiers based on score distribution.
- * primary: top ~15%, secondary: next ~35%, minor: rest
+ * Assign tiers per year — each year gets its own primary/secondary/minor.
+ * Ensures every year has visible top projects, not just globally dominant years.
  */
 export function assignTiers(projects: Project[]): Map<string, { score: number; tier: ProjectTier }> {
-  const scored = projects.map((p) => ({
-    id: p.id,
-    score: calculateSignificance(p),
-  }));
-
-  // Sort by score descending
-  scored.sort((a, b) => b.score - a.score);
-
-  const total = scored.length;
-  const primaryCut = Math.max(3, Math.ceil(total * 0.15));
-  const secondaryCut = primaryCut + Math.max(5, Math.ceil(total * 0.35));
-
   const result = new Map<string, { score: number; tier: ProjectTier }>();
-  for (let i = 0; i < scored.length; i++) {
-    const tier: ProjectTier = i < primaryCut ? "primary" : i < secondaryCut ? "secondary" : "minor";
-    result.set(scored[i].id, { score: scored[i].score, tier });
+
+  // Score all projects first
+  const scores = new Map<string, number>();
+  for (const p of projects) {
+    scores.set(p.id, calculateSignificance(p));
+  }
+
+  // Group by year
+  const byYear = new Map<string, Project[]>();
+  for (const p of projects) {
+    const year = p.dateRange.end?.split("-")[0] || p.dateRange.start?.split("-")[0] || "Unknown";
+    if (!byYear.has(year)) byYear.set(year, []);
+    byYear.get(year)!.push(p);
+  }
+
+  // Assign tiers within each year
+  for (const [, yearProjects] of byYear) {
+    const sorted = [...yearProjects].sort((a, b) => (scores.get(b.id) || 0) - (scores.get(a.id) || 0));
+    const total = sorted.length;
+    const primaryCut = Math.max(1, Math.ceil(total * 0.2));
+    const secondaryCut = primaryCut + Math.max(1, Math.ceil(total * 0.3));
+
+    for (let i = 0; i < sorted.length; i++) {
+      const p = sorted[i];
+      const score = scores.get(p.id) || 0;
+      const tier: ProjectTier = i < primaryCut ? "primary" : i < secondaryCut ? "secondary" : "minor";
+      result.set(p.id, { score, tier });
+    }
   }
 
   return result;
