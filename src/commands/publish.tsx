@@ -1,20 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Box, Text, useInput } from "ink";
-import { readInventory, writeInventory } from "../lib/inventory/store.ts";
-import { resolveAdapter } from "../lib/analysis/resolve-adapter.ts";
-import { writeConfig } from "../lib/config.ts";
-import { ProjectSelector } from "../components/ProjectSelector.tsx";
-import { EmailPicker } from "../components/EmailPicker.tsx";
-import { AgentPicker } from "../components/AgentPicker.tsx";
-import {
-  scanAndMerge,
-  collectEmails,
-  recountAndTag,
-  analyzeProjects,
-  generateBioFromProjects,
-  countUnanalyzed,
-} from "../lib/pipeline.ts";
-import { readConfig } from "../lib/config.ts";
+import { readInventory } from "../lib/inventory/store.ts";
+import { readConfig, writeConfig } from "../lib/config.ts";
+import { generateBioFromProjects, countUnanalyzed } from "../lib/pipeline.ts";
+import { Pipeline, type PipelineResult } from "../components/Pipeline.tsx";
 import {
   readAuthToken,
   startDeviceFlow,
@@ -28,8 +17,7 @@ import { exec } from "node:child_process";
 
 type Phase =
   | "checking-auth" | "auth" | "polling"
-  | "scanning" | "picking-emails" | "recounting" | "selecting"
-  | "picking-agent" | "analyzing"
+  | "pipeline" | "using-cache"
   | "checking-public" | "confirming" | "publishing" | "done" | "error";
 
 interface Props {
@@ -46,21 +34,13 @@ export default function Publish({ args, options }: Props) {
   const [error, setError] = useState("");
   const [publicCount, setPublicCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
-  const [scanCount, setScanCount] = useState(0);
-  const [lastFound, setLastFound] = useState("");
-  const [scanDir, setScanDir] = useState("");
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
-  const [current, setCurrent] = useState("");
-
-  const [allProjects, setAllProjects] = useState<Project[]>([]);
-  const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
-  const [inventory, setInventory] = useState<Inventory | null>(null);
-  const [resolvedAdapter, setResolvedAdapter] = useState<AgentAdapter | null>(null);
-  const [emailCounts, setEmailCounts] = useState<Map<string, number>>(new Map());
-  const [gitConfigEmails, setGitConfigEmails] = useState<Set<string>>(new Set());
-  const [confirmedEmails, setConfirmedEmails] = useState<string[]>([]);
   const [analyzedCount, setAnalyzedCount] = useState(0);
   const [jwt, setJwt] = useState("");
+
+  const [pipelineResult, setPipelineResult] = useState<PipelineResult | null>(null);
+  const [inventory, setInventory] = useState<Inventory | null>(null);
+  const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
+  const [adapter, setAdapter] = useState<AgentAdapter | null>(null);
 
   // Step 1: Auth
   useEffect(() => {
@@ -69,7 +49,7 @@ export default function Publish({ args, options }: Props) {
         let authData = await readAuthToken();
         if (authData?.jwt) {
           setJwt(authData.jwt);
-          startScanPhase();
+          startPipeline();
           return;
         }
         setPhase("auth");
@@ -85,7 +65,7 @@ export default function Publish({ args, options }: Props) {
           try {
             authData = await pollForToken(flow.deviceCode);
             setJwt(authData.jwt);
-            startScanPhase();
+            startPipeline();
             return;
           } catch (e) {
             if (e instanceof PendingError) continue;
@@ -98,141 +78,51 @@ export default function Publish({ args, options }: Props) {
     auth();
   }, []);
 
-  function startScanPhase() {
+  function startPipeline() {
     if (dir) {
-      setPhase("scanning");
+      setPhase("pipeline");
     } else {
-      // No dir — use existing inventory
-      readInventory().then((inv) => {
-        if (inv.projects.length === 0) {
-          setError("No projects found. Provide a directory: `agent-cv publish ~/Projects`");
-          setPhase("error");
-          return;
-        }
-        setInventory(inv);
-        const projects = inv.projects.filter((p) => !p.tags.includes("removed"));
-        setAllProjects(projects);
-        checkIfNeedsAnalysis(inv, projects);
-      });
+      // No dir — use existing inventory, skip pipeline
+      setPhase("using-cache");
     }
   }
 
-  // Step 2: Scan (if dir provided)
+  // Load cached inventory when no directory
   useEffect(() => {
-    if (phase !== "scanning" || !dir) return;
-    async function scan() {
-      try {
-        const result = await scanAndMerge(dir!, {
-          onProjectFound: (p, total) => { setScanCount(total); setLastFound(p.displayName); },
-          onDirectoryEnter: (d) => { setScanDir(d.replace(dir!, "").replace(/^\//, "") || "."); },
-        });
-        if (result.projects.length === 0) {
-          setError(`No projects found in ${dir}`);
-          setPhase("error");
-          return;
-        }
-        setInventory(result.inventory);
-        setAllProjects(result.projects);
-        checkIfNeedsAnalysis(result.inventory, result.projects);
-      } catch (e: any) { setError(e.message); setPhase("error"); }
-    }
-    scan();
-  }, [phase, dir]);
-
-  function checkIfNeedsAnalysis(inv: Inventory, projects: Project[]) {
-    const unanalyzed = countUnanalyzed(projects);
-    if (unanalyzed === 0) {
-      // All analyzed — skip to publish
-      setSelectedProjects(projects.filter((p) => p.included !== false));
+    if (phase !== "using-cache") return;
+    async function loadCache() {
+      const inv = await readInventory();
+      if (inv.projects.length === 0) {
+        setError("No projects found. Provide a directory: `agent-cv publish ~/Projects`");
+        setPhase("error");
+        return;
+      }
+      setInventory(inv);
+      const projects = inv.projects.filter((p) => !p.tags.includes("removed") && p.included !== false);
+      setSelectedProjects(projects);
       setPhase("checking-public");
-    } else if (options.email) {
-      setConfirmedEmails(options.email.split(",").map((e) => e.trim()));
-      setPhase("recounting");
-    } else {
-      // Need analysis — start email picker flow
-      collectEmails(projects).then((emails) => {
-        setEmailCounts(emails.emailCounts);
-        setGitConfigEmails(emails.preSelected);
-        if (emails.emailCounts.size === 0) {
-          setConfirmedEmails([]);
-          setPhase("selecting");
-        } else {
-          setPhase("picking-emails");
-        }
-      });
     }
-  }
-
-  const handleEmailPick = useCallback(async (selected: string[], save: boolean) => {
-    setConfirmedEmails(selected);
-    if (save) await writeConfig({ emails: selected, emailsConfirmed: true });
-    setPhase("recounting");
-  }, []);
-
-  // Step 3: Recount
-  useEffect(() => {
-    if (phase !== "recounting") return;
-    async function recount() {
-      try {
-        const updated = await recountAndTag(allProjects, confirmedEmails);
-        setAllProjects(updated);
-        if (inventory) await writeInventory(inventory);
-        if (options.all) { setSelectedProjects(updated); setPhase("picking-agent"); }
-        else setPhase("selecting");
-      } catch (e: any) { setError(e.message); setPhase("error"); }
-    }
-    recount();
+    loadCache();
   }, [phase]);
 
-  const handleSelection = useCallback(async (selected: Project[]) => {
-    if (selected.length === 0) { setError("No projects selected."); setPhase("error"); return; }
-    setSelectedProjects(selected);
-    const agentOpt = options.agent || "auto";
-    if (agentOpt !== "auto") {
-      try {
-        const { adapter } = await resolveAdapter(agentOpt);
-        setResolvedAdapter(adapter);
-        setPhase("analyzing");
-      } catch (e: any) { setError(e.message); setPhase("error"); }
-      return;
-    }
-    setPhase("picking-agent");
-  }, [options.agent]);
+  // Pipeline complete
+  const handlePipelineComplete = useCallback(async (result: PipelineResult) => {
+    setPipelineResult(result);
+    setInventory(result.inventory);
+    setSelectedProjects(result.projects);
+    setAdapter(result.adapter);
 
-  const handleAgentPick = useCallback((adapter: AgentAdapter) => {
-    setResolvedAdapter(adapter);
-    setPhase("analyzing");
+    // Generate bio if needed
+    const cfg = await readConfig();
+    if (!cfg.bio && result.adapter) {
+      try {
+        const bio = await generateBioFromProjects(result.projects, result.adapter);
+        if (bio) { cfg.bio = bio; await writeConfig(cfg); }
+      } catch { /* optional */ }
+    }
+
+    setPhase("checking-public");
   }, []);
-
-  // Step 4: Analyze
-  useEffect(() => {
-    if (phase !== "analyzing" || !resolvedAdapter) return;
-    async function run() {
-      try {
-        await analyzeProjects(selectedProjects, resolvedAdapter!, inventory!, {
-          onProgress: (done, total, cur) => { setProgress({ done, total }); setCurrent(cur); },
-        });
-
-        // Generate bio if not already set
-        const cfg = await readConfig();
-        if (!cfg.bio && resolvedAdapter) {
-          setCurrent("Generating bio...");
-          try {
-            const bio = await generateBioFromProjects(selectedProjects, resolvedAdapter);
-            if (bio) {
-              cfg.bio = bio;
-              const { writeConfig: wc } = await import("../lib/config.ts");
-              await wc(cfg);
-            }
-          } catch { /* optional */ }
-        }
-
-        if (inventory) await writeInventory(inventory);
-        setPhase("checking-public");
-      } catch (e: any) { setError(e.message); setPhase("error"); }
-    }
-    run();
-  }, [phase, resolvedAdapter]);
 
   const [publicFlags, setPublicFlags] = useState<Record<string, boolean>>({});
 
@@ -241,28 +131,22 @@ export default function Publish({ args, options }: Props) {
     if (phase !== "checking-public") return;
     async function check() {
       try {
-        const included = (inventory?.projects || selectedProjects).filter((p) => p.included !== false);
-        setTotalCount(included.length);
-        setAnalyzedCount(included.filter((p) => p.analysis).length);
-
-        const flags = await checkPublicRepos(included);
+        setTotalCount(selectedProjects.length);
+        setAnalyzedCount(selectedProjects.filter((p) => p.analysis).length);
+        const flags = await checkPublicRepos(selectedProjects);
         setPublicFlags(flags);
         setPublicCount(Object.values(flags).filter(Boolean).length);
         setPhase("confirming");
       } catch (e: any) { setError(e.message); setPhase("error"); }
     }
     check();
-  }, [phase]);
+  }, [phase, selectedProjects]);
 
-  // Step 5b: Confirmation — wait for y/n
+  // Confirmation
   useInput((input, key) => {
     if (phase !== "confirming") return;
-    if (input === "y" || key.return) {
-      doPublish();
-    } else if (input === "n" || key.escape) {
-      setError("Cancelled.");
-      setPhase("error");
-    }
+    if (input === "y" || key.return) doPublish();
+    else if (input === "n" || key.escape) { setError("Cancelled."); setPhase("error"); }
   });
 
   async function doPublish() {
@@ -300,22 +184,14 @@ export default function Publish({ args, options }: Props) {
       <Text>Enter code: <Text bold color="yellow">{userCode}</Text></Text>
     </Box>
   );
-  if (phase === "scanning") return (
-    <Box flexDirection="column">
-      <Text color="yellow">Scanning {dir}...</Text>
-      {scanCount > 0 && <Text color="green">Found {scanCount} project{scanCount !== 1 ? "s" : ""}{lastFound ? ` — ${lastFound}` : ""}</Text>}
-      {scanDir && <Text dimColor>{scanDir}</Text>}
-    </Box>
+  if (phase === "pipeline") return (
+    <Pipeline
+      options={{ directory: dir!, all: options.all, email: options.email, agent: options.agent }}
+      onComplete={handlePipelineComplete}
+      onError={(msg) => { setError(msg); setPhase("error"); }}
+    />
   );
-  if (phase === "picking-emails") return <EmailPicker emailCounts={emailCounts} preSelected={gitConfigEmails} onSubmit={handleEmailPick} />;
-  if (phase === "recounting") return <Text color="yellow">Identifying your projects...</Text>;
-  if (phase === "selecting") return <ProjectSelector projects={allProjects} scanRoot={dir || "~"} onSubmit={handleSelection} />;
-  if (phase === "picking-agent") return <AgentPicker onSubmit={handleAgentPick} />;
-  if (phase === "analyzing") return (
-    <Box flexDirection="column">
-      <Text color="yellow">Analyzing [{progress.done}/{progress.total}]: {current}</Text>
-    </Box>
-  );
+  if (phase === "using-cache") return <Text color="gray">Loading inventory...</Text>;
   if (phase === "checking-public") return <Text color="gray">Checking repos...</Text>;
   if (phase === "confirming") return (
     <Box flexDirection="column" gap={1}>
