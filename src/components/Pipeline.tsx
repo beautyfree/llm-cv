@@ -120,6 +120,13 @@ export function Pipeline({ options, onComplete, onError }: Props) {
           return;
         }
 
+        // Skip email picker if already confirmed from previous run
+        if (result.inventory.profile.emailsConfirmed && result.inventory.profile.emails.length > 0) {
+          setConfirmedEmails(result.inventory.profile.emails);
+          setPhase("recounting");
+          return;
+        }
+
         const emails = await collectEmails(result.projects, result.inventory.profile.emails);
         setEmailCounts(emails.emailCounts);
         setGitConfigEmails(emails.preSelected);
