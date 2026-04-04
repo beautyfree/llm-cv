@@ -154,14 +154,15 @@ export default function Publish({ options }: Props) {
 
 /**
  * Check which projects have public GitHub repos.
- * Uses unauthenticated GitHub API — public repos return 200, private return 404.
+ * Uses GitHub API with follow-redirects. Handles 301 (repo moved/renamed).
+ * 200 = public, 404 = private or not found.
+ * Only checks repos with GitHub remoteUrls, skips the rest.
  */
 async function checkPublicRepos(
   projects: Project[]
 ): Promise<Record<string, boolean>> {
   const flags: Record<string, boolean> = {};
 
-  // Only check projects with GitHub remoteUrls
   const toCheck = projects.filter(
     (p) => p.remoteUrl?.includes("github.com")
   );
@@ -172,14 +173,20 @@ async function checkPublicRepos(
     const results = await Promise.all(
       batch.map(async (p) => {
         try {
-          // Extract owner/repo from URL
           const match = p.remoteUrl!.match(/github\.com\/([^/]+\/[^/]+)/);
           if (!match) return { id: p.id, isPublic: false };
 
+          // Use GET with redirect: "follow" to handle 301 (repo renamed/moved)
           const res = await fetch(`https://api.github.com/repos/${match[1]}`, {
-            method: "HEAD",
+            redirect: "follow",
+            headers: { "User-Agent": "agent-cv" },
           });
-          return { id: p.id, isPublic: res.status === 200 };
+
+          if (res.status === 200) {
+            const data = await res.json();
+            return { id: p.id, isPublic: !data.private };
+          }
+          return { id: p.id, isPublic: false };
         } catch {
           return { id: p.id, isPublic: false };
         }
@@ -188,7 +195,6 @@ async function checkPublicRepos(
     for (const r of results) flags[r.id] = r.isPublic;
   }
 
-  // Non-GitHub repos default to false
   for (const p of projects) {
     if (!(p.id in flags)) flags[p.id] = false;
   }
