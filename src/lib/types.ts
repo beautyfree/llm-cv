@@ -24,6 +24,9 @@ export interface Project {
   lastCommit?: string;
   markers: string[];
   size: { files: number; lines: number };
+  description?: string;
+  topics?: string[];
+  license?: string;
   analysis?: ProjectAnalysis;
   privacyAudit?: PrivacyAuditResult;
   tags: string[];

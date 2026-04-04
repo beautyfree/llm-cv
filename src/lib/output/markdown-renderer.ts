@@ -161,9 +161,12 @@ function renderProject(
     lines.push("");
   }
 
-  // Summary
+  // Summary (LLM analysis or fallback to manifest description)
   if (project.analysis?.summary) {
     lines.push(project.analysis.summary);
+    lines.push("");
+  } else if (project.description) {
+    lines.push(project.description);
     lines.push("");
   }
 
@@ -186,6 +189,19 @@ function renderProject(
   }
   if (project.authorCommitCount > 0 && project.authorCommitCount !== project.commitCount) {
     meta.push(`${project.authorCommitCount} by me`);
+  }
+  if (project.size.lines > 0) {
+    const k = project.size.lines >= 1000
+      ? `${(project.size.lines / 1000).toFixed(1)}K`
+      : `${project.size.lines}`;
+    meta.push(`${k} lines`);
+  }
+  if (project.remoteUrl) {
+    // Clean GitHub URL for display
+    const url = project.remoteUrl
+      .replace(/\.git$/, "")
+      .replace(/^git@github\.com:/, "https://github.com/");
+    meta.push(`[repo](${url})`);
   }
   if (meta.length > 0) {
     lines.push(`*${meta.join(" | ")}*`);

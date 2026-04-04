@@ -1,4 +1,5 @@
-import { readdir, stat, access } from "node:fs/promises";
+import { readdir, stat, access, readFile } from "node:fs/promises";
+import simpleGit from "simple-git";
 import { join, basename, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import type { Project } from "../types.ts";
@@ -211,35 +212,82 @@ async function buildProject(
   let type = primaryMarker?.type || (hasGit ? "git" : "unknown");
   const frameworks: string[] = [];
 
+  let description: string | undefined;
+  let topics: string[] = [];
+  let license: string | undefined;
+
   if (type === "node") {
     try {
       const pkg = await Bun.file(join(dir, "package.json")).json();
-      // Detect TypeScript
-      const allDeps = {
-        ...pkg.dependencies,
-        ...pkg.devDependencies,
-      };
+      const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
       if (allDeps?.typescript || (await fileExists(join(dir, "tsconfig.json")))) {
         language = "TypeScript";
       }
-      // Detect common frameworks
       for (const [dep, fw] of [
-        ["react", "React"],
-        ["vue", "Vue"],
-        ["svelte", "Svelte"],
-        ["@angular/core", "Angular"],
-        ["next", "Next.js"],
-        ["nuxt", "Nuxt"],
-        ["express", "Express"],
-        ["fastify", "Fastify"],
-        ["nest", "NestJS"],
-        ["electron", "Electron"],
+        ["react", "React"], ["vue", "Vue"], ["svelte", "Svelte"],
+        ["@angular/core", "Angular"], ["next", "Next.js"], ["nuxt", "Nuxt"],
+        ["express", "Express"], ["fastify", "Fastify"], ["nest", "NestJS"],
+        ["electron", "Electron"], ["hono", "Hono"], ["elysia", "Elysia"],
+        ["astro", "Astro"], ["remix", "Remix"], ["solid-js", "Solid"],
+        ["@tanstack/react-query", "TanStack Query"], ["prisma", "Prisma"],
+        ["drizzle-orm", "Drizzle"], ["trpc", "tRPC"], ["@trpc/server", "tRPC"],
       ] as const) {
         if (allDeps?.[dep]) frameworks.push(fw);
       }
-    } catch {
-      // package.json read failed, keep defaults
-    }
+      if (pkg.description) description = pkg.description;
+      if (Array.isArray(pkg.keywords)) topics = pkg.keywords;
+      if (pkg.license) license = pkg.license;
+    } catch { /* ignore */ }
+  } else if (type === "python") {
+    try {
+      const content = await readFile(join(dir, "requirements.txt"), "utf-8").catch(() => "");
+      for (const [pattern, fw] of [
+        ["django", "Django"], ["flask", "Flask"], ["fastapi", "FastAPI"],
+        ["celery", "Celery"], ["sqlalchemy", "SQLAlchemy"], ["pandas", "Pandas"],
+        ["numpy", "NumPy"], ["torch", "PyTorch"], ["tensorflow", "TensorFlow"],
+      ] as const) {
+        if (content.toLowerCase().includes(pattern)) frameworks.push(fw);
+      }
+    } catch { /* ignore */ }
+  } else if (type === "rust") {
+    try {
+      const content = await readFile(join(dir, "Cargo.toml"), "utf-8").catch(() => "");
+      for (const [pattern, fw] of [
+        ["actix", "Actix"], ["tokio", "Tokio"], ["axum", "Axum"],
+        ["serde", "Serde"], ["warp", "Warp"], ["rocket", "Rocket"],
+        ["tauri", "Tauri"], ["bevy", "Bevy"],
+      ] as const) {
+        if (content.toLowerCase().includes(pattern)) frameworks.push(fw);
+      }
+      const descMatch = content.match(/description\s*=\s*"([^"]+)"/);
+      if (descMatch?.[1]) description = descMatch[1];
+      const licMatch = content.match(/license\s*=\s*"([^"]+)"/);
+      if (licMatch?.[1]) license = licMatch[1];
+    } catch { /* ignore */ }
+  } else if (type === "go") {
+    try {
+      const content = await readFile(join(dir, "go.mod"), "utf-8").catch(() => "");
+      for (const [pattern, fw] of [
+        ["gin-gonic", "Gin"], ["gofiber", "Fiber"], ["echo", "Echo"],
+        ["gorilla/mux", "Gorilla"], ["grpc", "gRPC"],
+      ] as const) {
+        if (content.includes(pattern)) frameworks.push(fw);
+      }
+    } catch { /* ignore */ }
+  }
+
+  // License fallback: check for LICENSE file
+  if (!license) {
+    try {
+      const licContent = await readFile(join(dir, "LICENSE"), "utf-8").catch(
+        () => readFile(join(dir, "LICENSE.md"), "utf-8").catch(() => "")
+      );
+      if (licContent.includes("MIT")) license = "MIT";
+      else if (licContent.includes("Apache")) license = "Apache-2.0";
+      else if (licContent.includes("GPL")) license = "GPL";
+      else if (licContent.includes("BSD")) license = "BSD";
+      else if (licContent.length > 0) license = "Other";
+    } catch { /* ignore */ }
   }
 
   // Fallback: detect language by file extensions if still Unknown
@@ -275,13 +323,29 @@ async function buildProject(
   // Privacy audit
   const privacyAudit = await scanForSecrets(dir);
 
-  // Count files (quick, depth 1 only for speed)
+  // Count files and lines via git or fallback
   let fileCount = 0;
-  try {
-    const entries = await readdir(dir, { withFileTypes: true });
-    fileCount = entries.filter((e) => e.isFile()).length;
-  } catch {
-    // ignore
+  let lineCount = 0;
+  if (hasGit) {
+    try {
+      const git = simpleGit(dir);
+      const files = await git.raw(["ls-files"]);
+      const fileList = files.trim().split("\n").filter(Boolean);
+      fileCount = fileList.length;
+      // Count lines (fast: use git's built-in)
+      try {
+        const stats = await git.raw(["diff", "--stat", "--diff-filter=ACMR", "4b825dc642cb6eb9a060e54bf899d15f3f338fb9", "HEAD"]);
+        const lastLine = stats.trim().split("\n").pop() || "";
+        const insMatch = lastLine.match(/(\d+) insertion/);
+        if (insMatch) lineCount = parseInt(insMatch[1]!, 10);
+      } catch { /* no commits */ }
+    } catch { /* fallback */ }
+  }
+  if (fileCount === 0) {
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      fileCount = entries.filter((e) => e.isFile()).length;
+    } catch { /* ignore */ }
   }
 
   return {
@@ -300,7 +364,10 @@ async function buildProject(
     markers: hasGit
       ? [...detectedMarkers, ".git"]
       : detectedMarkers,
-    size: { files: fileCount, lines: 0 },
+    size: { files: fileCount, lines: lineCount },
+    description,
+    topics: topics.length > 0 ? topics : undefined,
+    license,
     privacyAudit,
     tags: [],
     included: true,
