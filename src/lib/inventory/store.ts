@@ -110,7 +110,19 @@ export async function readInventory(): Promise<Inventory> {
 
   // Migrate old config.json if it exists
   const migrated = await migrateOldConfig(inventory);
-  if (migrated) {
+
+  // Auto-detect name from git config if not set
+  if (!inventory.profile.name) {
+    try {
+      const { execSync } = await import("node:child_process");
+      const gitName = execSync("git config --global user.name", { encoding: "utf-8" }).trim();
+      if (gitName) {
+        inventory.profile.name = gitName;
+      }
+    } catch { /* git not available or no name configured */ }
+  }
+
+  if (migrated || !inventory.profile.name) {
     await writeInventory(inventory);
   }
 
