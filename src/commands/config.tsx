@@ -3,6 +3,7 @@ import { Text, Box, useInput, useApp } from "ink";
 import { z } from "zod/v4";
 import { readInventory, writeInventory } from "../lib/inventory/store.ts";
 import type { Inventory } from "../lib/types.ts";
+import { isTelemetryEnabled, setTelemetryEnabled } from "../lib/telemetry.ts";
 
 export const options = z.object({});
 
@@ -18,6 +19,7 @@ type Field = {
 export default function ConfigCommand({}: Props) {
   const { exit } = useApp();
   const [inventory, setInventory] = useState<Inventory | null>(null);
+  const [telemetry, setTelemetry] = useState<boolean | null>(null);
   const [cursor, setCursor] = useState(0);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
@@ -25,9 +27,10 @@ export default function ConfigCommand({}: Props) {
 
   useEffect(() => {
     readInventory().then(setInventory);
+    isTelemetryEnabled().then(setTelemetry);
   }, []);
 
-  if (!inventory) return <Text color="yellow">Loading config...</Text>;
+  if (!inventory || telemetry === null) return <Text color="yellow">Loading config...</Text>;
 
   const { profile, insights } = inventory;
 
@@ -40,6 +43,7 @@ export default function ConfigCommand({}: Props) {
     { key: "socials.twitter", label: "Twitter/X", value: profile.socials?.twitter || "", nested: "twitter" },
     { key: "socials.telegram", label: "Telegram", value: profile.socials?.telegram || "", nested: "telegram" },
     { key: "socials.website", label: "Website URL", value: profile.socials?.website || "", nested: "website" },
+    { key: "telemetry", label: "Anonymous telemetry", value: telemetry ? "on" : "off" },
   ];
 
   useInput((input, key) => {
@@ -48,7 +52,11 @@ export default function ConfigCommand({}: Props) {
         const field = fields[cursor]!;
         const updated = { ...inventory };
 
-        if (field.key === "emailPublic") {
+        if (field.key === "telemetry") {
+          const enabled = editValue.toLowerCase().startsWith("on") || editValue.toLowerCase().startsWith("y");
+          setTelemetryEnabled(enabled);
+          setTelemetry(enabled);
+        } else if (field.key === "emailPublic") {
           updated.profile.emailPublic = editValue.toLowerCase().startsWith("y");
         } else if (field.key === "bio") {
           updated.insights = { ...updated.insights, bio: editValue || undefined };

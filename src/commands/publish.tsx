@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Box, Text, useInput, useApp } from "ink";
 import { readInventory } from "../lib/inventory/store.ts";
 import { countUnanalyzed } from "../lib/pipeline.ts";
+import { track, flush as flushTelemetry } from "../lib/telemetry.ts";
 import { Pipeline, type PipelineResult } from "../components/Pipeline.tsx";
 import {
   readAuthToken,
@@ -144,6 +145,8 @@ export default function Publish({ args, options }: Props) {
     try {
       const payload = sanitizeForPublish(inventory!, publicFlags, options.bio);
       const result = await publishToApi(jwt, payload);
+      await track("publish_complete", { projects: payload.inventory.projects.length });
+      await flushTelemetry();
       setResultUrl(result.url);
       setPhase("done");
       if (!options.noOpen) { try { exec(`open ${result.url}`); } catch {} }

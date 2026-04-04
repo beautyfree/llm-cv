@@ -13,6 +13,8 @@ import {
   type ProjectStatus,
 } from "../lib/pipeline.ts";
 import type { Project, Inventory, AgentAdapter } from "../lib/types.ts";
+import { hasBeenPrompted, setTelemetryEnabled, track } from "../lib/telemetry.ts";
+import { TelemetryPrompt } from "./TelemetryPrompt.tsx";
 
 export interface PipelineOptions {
   directory: string;
@@ -36,7 +38,7 @@ interface Props {
 }
 
 type Phase =
-  | "scanning" | "picking-emails" | "recounting" | "selecting"
+  | "telemetry-prompt" | "scanning" | "picking-emails" | "recounting" | "selecting"
   | "picking-agent" | "analyzing" | "analysis-failed" | "done";
 
 /**
@@ -46,7 +48,7 @@ type Phase =
 export function Pipeline({ options, onComplete, onError }: Props) {
   const { directory, all: selectAll, email, agent = "auto", noCache, dryRun } = options;
 
-  const [phase, setPhase] = useState<Phase>("scanning");
+  const [phase, setPhase] = useState<Phase>("telemetry-prompt");
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
   const [inventory, setInventory] = useState<Inventory | null>(null);
@@ -67,10 +69,26 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   const [current, setCurrent] = useState("");
   const [projectStatuses, setProjectStatuses] = useState<Map<string, { status: ProjectStatus; detail?: string }>>(new Map());
 
+  // Phase 0: Telemetry prompt (first run only)
+  useEffect(() => {
+    if (phase !== "telemetry-prompt") return;
+    hasBeenPrompted().then((prompted) => {
+      if (prompted) setPhase("scanning");
+      // else stay on telemetry-prompt and show UI
+    });
+  }, [phase]);
+
+  const handleTelemetryChoice = useCallback(async (enabled: boolean) => {
+    await setTelemetryEnabled(enabled);
+    setPhase("scanning");
+  }, []);
+
   // Phase 1: Scan
   useEffect(() => {
+    if (phase !== "scanning") return;
     async function scan() {
       try {
+        await track("command_start", { command: "pipeline" });
         const result = await scanAndMerge(directory, {
           onProjectFound: (p, total) => { setScanCount(total); setLastFound(p.displayName); },
           onDirectoryEnter: (dir) => { setScanDir(dir.replace(directory, "").replace(/^\//, "") || "."); },
@@ -103,7 +121,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
       } catch (err: any) { onError(err.message); }
     }
     scan();
-  }, [directory, email]);
+  }, [phase, directory, email]);
 
   // Email picker
   const handleEmailPick = useCallback(async (selected: string[], save: boolean) => {
@@ -200,6 +218,13 @@ export function Pipeline({ options, onComplete, onError }: Props) {
           },
         });
 
+        await track("analysis_complete", {
+          analyzed: result.analyzed,
+          failed: result.failed.length,
+          cached: result.skipped,
+          agent: resolvedAdapter!.name,
+        });
+
         if (result.failed.length > 0) {
           setFailedProjects(result.failed);
           setPhase("analysis-failed");
@@ -233,6 +258,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   });
 
   // Render based on phase
+  if (phase === "telemetry-prompt") return <TelemetryPrompt onChoice={handleTelemetryChoice} />;
   if (phase === "scanning") return (
     <Box flexDirection="column">
       <Text color="yellow">Scanning {directory}...</Text>
