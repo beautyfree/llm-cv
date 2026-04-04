@@ -11,8 +11,10 @@ import {
   collectEmails,
   recountAndTag,
   analyzeProjects,
+  generateBioFromProjects,
   countUnanalyzed,
 } from "../lib/pipeline.ts";
+import { readConfig } from "../lib/config.ts";
 import {
   readAuthToken,
   startDeviceFlow,
@@ -210,6 +212,21 @@ export default function Publish({ args, options }: Props) {
         await analyzeProjects(selectedProjects, resolvedAdapter!, inventory!, {
           onProgress: (done, total, cur) => { setProgress({ done, total }); setCurrent(cur); },
         });
+
+        // Generate bio if not already set
+        const cfg = await readConfig();
+        if (!cfg.bio && resolvedAdapter) {
+          setCurrent("Generating bio...");
+          try {
+            const bio = await generateBioFromProjects(selectedProjects, resolvedAdapter);
+            if (bio) {
+              cfg.bio = bio;
+              const { writeConfig: wc } = await import("../lib/config.ts");
+              await wc(cfg);
+            }
+          } catch { /* optional */ }
+        }
+
         if (inventory) await writeInventory(inventory);
         setPhase("checking-public");
       } catch (e: any) { setError(e.message); setPhase("error"); }
@@ -251,7 +268,8 @@ export default function Publish({ args, options }: Props) {
   async function doPublish() {
     setPhase("publishing");
     try {
-      const payload = sanitizeForPublish(inventory!, publicFlags, options.bio);
+      const cfg = await readConfig();
+      const payload = sanitizeForPublish(inventory!, publicFlags, cfg, options.bio);
       const result = await publishToApi(jwt, payload);
       setResultUrl(result.url);
       setPhase("done");
@@ -345,7 +363,12 @@ async function checkPublicRepos(projects: Project[]): Promise<Record<string, boo
   return flags;
 }
 
-function sanitizeForPublish(inventory: Inventory, publicFlags: Record<string, boolean>, bio?: string) {
+function sanitizeForPublish(
+  inventory: Inventory,
+  publicFlags: Record<string, boolean>,
+  config: Awaited<ReturnType<typeof readConfig>>,
+  bioOverride?: string
+) {
   const projects = inventory.projects.filter((p) => p.included !== false).map((p: Project) => {
     const isPublic = publicFlags[p.id] ?? false;
     return {
@@ -353,11 +376,20 @@ function sanitizeForPublish(inventory: Inventory, publicFlags: Record<string, bo
       frameworks: p.frameworks, dateRange: p.dateRange, hasGit: p.hasGit,
       commitCount: p.commitCount, authorCommitCount: p.authorCommitCount,
       hasUncommittedChanges: p.hasUncommittedChanges, lastCommit: p.lastCommit,
+      size: p.size, description: p.description, license: p.license,
       analysis: p.analysis, tags: p.tags, included: true,
       remoteUrl: isPublic ? p.remoteUrl : null, isPublic,
     };
   });
-  return { inventory: { version: inventory.version, projects }, bio };
+  return {
+    inventory: { version: inventory.version, projects },
+    profile: {
+      name: config.name,
+      bio: bioOverride || config.bio,
+      socials: config.socials,
+      email: config.emailPublic ? config.emails?.[0] : undefined,
+    },
+  };
 }
 
 function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
