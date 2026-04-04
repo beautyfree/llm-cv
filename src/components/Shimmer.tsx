@@ -26,7 +26,7 @@ export function Shimmer({ children }: Props) {
   return (
     <Text>
       {chars.map((char, i) => {
-        const colorIndex = (chars.length - 1 - i + offset) % COLORS.length;
+        const colorIndex = (i + offset) % COLORS.length;
         return (
           <Text key={i} color={COLORS[colorIndex]}>
             {char}
