@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Text, Box, useInput } from "ink";
 import { readInventory, writeInventory } from "../lib/inventory/store.ts";
 import { resolveAdapter } from "../lib/analysis/resolve-adapter.ts";
+import { Shimmer } from "./Shimmer.tsx";
 import { ProjectSelector } from "./ProjectSelector.tsx";
 import { EmailPicker } from "./EmailPicker.tsx";
 import { AgentPicker } from "./AgentPicker.tsx";
@@ -179,7 +180,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
     async function finish() {
       try {
         if (!dryRun && inventory && !inventory.insights.bio) {
-          setCurrent("Generating profile insights...");
+          setCurrent("generating profile insights...");
           try {
             const { generateProfileInsights } = await import("../lib/analysis/bio-generator.ts");
             const insights = await generateProfileInsights(selectedProjects, resolvedAdapter!);
@@ -261,13 +262,13 @@ export function Pipeline({ options, onComplete, onError }: Props) {
           <Text dimColor>Anonymous telemetry enabled. Disable: agent-cv config or AGENT_CV_TELEMETRY=off</Text>
         </Box>
       )}
-      <Text color="yellow">Scanning {directory}...</Text>
+      <Text><Shimmer>Scanning</Shimmer> {directory}...</Text>
       {scanCount > 0 && <Text color="green">Found {scanCount} project{scanCount !== 1 ? "s" : ""}{lastFound ? ` — ${lastFound}` : ""}</Text>}
       {scanDir && <Text dimColor>{scanDir}</Text>}
     </Box>
   );
   if (phase === "picking-emails") return <EmailPicker emailCounts={emailCounts} preSelected={gitConfigEmails} onSubmit={handleEmailPick} />;
-  if (phase === "recounting") return <Text color="yellow">Identifying your projects...</Text>;
+  if (phase === "recounting") return <Text><Shimmer>Identifying</Shimmer> your projects...</Text>;
   if (phase === "selecting") return <ProjectSelector projects={allProjects} scanRoot={directory} onSubmit={handleSelection} />;
   if (phase === "picking-agent") return <AgentPicker onSubmit={handleAgentPick} />;
   if (phase === "analyzing") {
@@ -310,7 +311,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
 
     return (
       <Box flexDirection="column">
-        <Text bold>Analyzing projects [{done.length}/{allEntries.length}]</Text>
+        <Text bold><Shimmer>Analyzing</Shimmer> projects [{done.length}/{allEntries.length}]</Text>
         {dryRun && <Text dimColor>(dry-run mode, no LLM calls)</Text>}
         <Text> </Text>
         {visible.map((entry) => (
@@ -321,7 +322,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
             </Text>
             {entry.detail && entry.status === "done" && <Text dimColor>{entry.detail}</Text>}
             {entry.detail && entry.status === "failed" && <Text color="red" dimColor>{entry.detail}</Text>}
-            {entry.status === "analyzing" && <Text color="yellow">analyzing...</Text>}
+            {entry.status === "analyzing" && <Shimmer>analyzing...</Shimmer>}
           </Box>
         ))}
         {queued.length > 0 && <Text dimColor>{"\n"}  {queued.length} more in queue</Text>}

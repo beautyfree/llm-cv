@@ -3,6 +3,7 @@ import { Box, Text, useInput, useApp } from "ink";
 import { readInventory } from "../lib/inventory/store.ts";
 import { countUnanalyzed } from "../lib/pipeline.ts";
 import { track, flush as flushTelemetry } from "../lib/telemetry.ts";
+import { Shimmer } from "../components/Shimmer.tsx";
 import { Pipeline, type PipelineResult } from "../components/Pipeline.tsx";
 import {
   readAuthToken,
@@ -207,7 +208,7 @@ export default function Publish({ args, options }: Props) {
       <Text>Publish to agent-cv.dev? <Text color="green" bold>(y)</Text> / <Text color="red">n</Text></Text>
     </Box>
   );
-  if (phase === "publishing") return <Text color="gray">Publishing to agent-cv.dev...</Text>;
+  if (phase === "publishing") return <Text><Shimmer>Publishing</Shimmer> to agent-cv.dev...</Text>;
 
   return (
     <Box flexDirection="column" gap={1}>
