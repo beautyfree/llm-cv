@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { Text, Box, useInput } from "ink";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { Text, Box, useInput, useStdout } from "ink";
 import { readInventory, writeInventory } from "../lib/inventory/store.ts";
 import { resolveAdapter } from "../lib/analysis/resolve-adapter.ts";
 import { ProjectSelector } from "./ProjectSelector.tsx";
@@ -47,7 +47,17 @@ type Phase =
 export function Pipeline({ options, onComplete, onError }: Props) {
   const { directory, all: selectAll, email, agent = "auto", noCache, dryRun } = options;
 
-  const [phase, setPhase] = useState<Phase>("init");
+  const { write } = useStdout();
+  const prevPhase = useRef<Phase>("init");
+  const [phase, _setPhase] = useState<Phase>("init");
+  const setPhase = useCallback((next: Phase) => {
+    // Clear screen when switching between interactive phases to prevent ghost text
+    if (prevPhase.current !== next) {
+      write("\x1b[2J\x1b[H");
+      prevPhase.current = next;
+    }
+    _setPhase(next);
+  }, [write]);
   const [showTelemetryNotice, setShowTelemetryNotice] = useState(false);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
@@ -116,13 +126,6 @@ export function Pipeline({ options, onComplete, onError }: Props) {
 
         if (email) {
           setConfirmedEmails(email.split(",").map((e) => e.trim()));
-          setPhase("recounting");
-          return;
-        }
-
-        // Skip email picker if already confirmed from previous run
-        if (result.inventory.profile.emailsConfirmed && result.inventory.profile.emails.length > 0) {
-          setConfirmedEmails(result.inventory.profile.emails);
           setPhase("recounting");
           return;
         }
