@@ -16,18 +16,23 @@ type Row =
 export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
   const { exit } = useApp();
   const [cursor, setCursor] = useState(0);
-  const [selected, setSelected] = useState<Set<string>>(
-    new Set(
-      projects
-        .filter((p) => p.authorCommitCount > 0 || !p.hasGit || p.commitCount === 0 || p.hasUncommittedChanges)
-        .map((p) => p.id)
-    )
-  );
+  const initialSelection = useMemo(() => new Set(
+    projects
+      .filter((p) => p.authorCommitCount > 0 || !p.hasGit || p.commitCount === 0 || p.hasUncommittedChanges)
+      .map((p) => p.id)
+  ), [projects]);
+
+  const [selected, setSelected] = useState<Set<string>>(new Set(initialSelection));
+  const [undoStack, setUndoStack] = useState<Set<string>[]>([]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
 
+  function pushUndo() {
+    setUndoStack((stack) => [...stack.slice(-20), new Set(selected)]);
+  }
+
   // Reserved keys that do NOT type into search
-  const RESERVED = new Set([" ", "a", "s", "q"]);
+  const RESERVED = new Set([" ", "a", "s", "q", "u", "r"]);
 
   // Group projects by parent directory
   const groups = useMemo(() => {
@@ -236,8 +241,19 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
     // Reserved single-char commands (only when not searching)
     if (!search && input && RESERVED.has(input)) {
       if (input === "a") {
+        pushUndo();
         if (selected.size === projects.length) setSelected(new Set());
         else setSelected(new Set(projects.map((p) => p.id)));
+      } else if (input === "u") {
+        setUndoStack((stack) => {
+          if (stack.length === 0) return stack;
+          const prev = stack[stack.length - 1]!;
+          setSelected(prev);
+          return stack.slice(0, -1);
+        });
+      } else if (input === "r") {
+        pushUndo();
+        setSelected(new Set(initialSelection));
       } else if (input === "s") {
         onSubmit(projects.filter((p) => selected.has(p.id)));
       } else if (input === "q") {
@@ -255,6 +271,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
   function toggleCurrent() {
     const row = rows[cursor];
     if (!row) return;
+    pushUndo();
     if (row.kind === "group") {
       // Collect ALL projects in this group AND nested subgroups
       const prefix = row.path === "." ? "" : row.path + "/";
@@ -291,7 +308,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
           {search && <Text color="cyan"> — {filteredGroups.reduce((n, [, items]) => n + items.length, 0)} matches</Text>}
         </Text>
         <Text dimColor>
-          [Space] toggle  [Enter] expand/collapse  [s] submit  [a] all  [Esc] clear  Type to search
+          [Space] toggle  [Enter] expand/collapse  [s] submit  [a] all  [u] undo  [r] reset  Type to search
         </Text>
         <Text dimColor>
           <Text color="green">★</Text> = your commits  <Text color="yellow">!</Text> = secrets excluded  <Text color="gray">gray</Text> = not yours
