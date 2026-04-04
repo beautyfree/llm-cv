@@ -39,11 +39,17 @@ export class CodexAdapter implements AgentAdapter {
     }
     if (!stdout.trim()) throw new Error("Codex returned empty response");
 
+    if (context.rawPrompt) {
+      return { summary: stdout.trim(), techStack: [], contributions: [], analyzedAt: new Date().toISOString(), analyzedBy: "codex" };
+    }
+
     return parseResponse(stdout);
   }
 }
 
 function buildPrompt(context: ProjectContext): string {
+  if (context.rawPrompt) return context.rawPrompt;
+
   const parts: string[] = [];
 
   if (context.previousAnalysis) {

@@ -105,6 +105,8 @@ export interface ProjectContext {
   dependencies: string;
   directoryTree: string;
   gitShortlog: string;
+  /** When set, adapters should use this as the full prompt without wrapping. */
+  rawPrompt?: string;
   recentCommits: string;
   /** Previous analysis result, if this is a re-analysis */
   previousAnalysis?: ProjectAnalysis;

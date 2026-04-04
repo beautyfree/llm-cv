@@ -42,11 +42,17 @@ export class CursorAdapter implements AgentAdapter {
     }
     if (!stdout.trim()) throw new Error("Cursor agent returned empty response");
 
+    if (context.rawPrompt) {
+      return { summary: stdout.trim(), techStack: [], contributions: [], analyzedAt: new Date().toISOString(), analyzedBy: "cursor" };
+    }
+
     return parseResponse(stdout);
   }
 }
 
 function buildPrompt(context: ProjectContext): string {
+  if (context.rawPrompt) return context.rawPrompt;
+
   const parts: string[] = [];
 
   if (context.previousAnalysis) {

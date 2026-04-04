@@ -53,11 +53,23 @@ export class ClaudeAdapter implements AgentAdapter {
       throw new Error("Claude returned empty response");
     }
 
+    if (context.rawPrompt) {
+      // Raw prompt mode: return LLM output as-is in summary, caller parses
+      let text = stdout.trim();
+      try {
+        const claudeOutput = JSON.parse(text);
+        if (claudeOutput.result) text = claudeOutput.result;
+      } catch { /* not Claude JSON format */ }
+      return { summary: text, techStack: [], contributions: [], analyzedAt: new Date().toISOString(), analyzedBy: "claude" };
+    }
+
     return parseResponse(stdout);
   }
 }
 
 function buildPrompt(context: ProjectContext): string {
+  if (context.rawPrompt) return context.rawPrompt;
+
   const hasHistory = !!context.previousAnalysis;
   const parts: string[] = [];
 

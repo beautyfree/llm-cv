@@ -67,6 +67,14 @@ export class APIAdapter implements AgentAdapter {
 
     const prompt = buildPrompt(context);
 
+    if (context.rawPrompt) {
+      // Raw prompt mode: get LLM response as-is, caller parses
+      const content = config.baseUrl.includes("anthropic.com")
+        ? await this.callAnthropicRaw(config, prompt)
+        : await this.callOpenAIRaw(config, prompt);
+      return { summary: content, techStack: [], contributions: [], analyzedAt: new Date().toISOString(), analyzedBy: "api" };
+    }
+
     // Anthropic has a different API format
     if (config.baseUrl.includes("anthropic.com")) {
       return this.callAnthropic(config, prompt);
@@ -74,6 +82,28 @@ export class APIAdapter implements AgentAdapter {
 
     // OpenAI-compatible (OpenRouter, OpenAI, Ollama, etc.)
     return this.callOpenAI(config, prompt);
+  }
+
+  private async callOpenAIRaw(config: { apiKey: string; baseUrl: string; model: string }, prompt: string): Promise<string> {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify({ model: config.model, messages: [{ role: "user", content: prompt }], temperature: 0.3, max_tokens: 2048 }),
+    });
+    if (!response.ok) throw new Error(`API error ${response.status}: ${(await response.text()).slice(0, 200)}`);
+    const json = await response.json() as any;
+    return json.choices?.[0]?.message?.content || "";
+  }
+
+  private async callAnthropicRaw(config: { apiKey: string; baseUrl: string; model: string }, prompt: string): Promise<string> {
+    const response = await fetch(`${config.baseUrl}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": config.apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: config.model, max_tokens: 2048, messages: [{ role: "user", content: prompt }] }),
+    });
+    if (!response.ok) throw new Error(`Anthropic API error ${response.status}: ${(await response.text()).slice(0, 200)}`);
+    const json = await response.json() as any;
+    return json.content?.[0]?.text || "";
   }
 
   private async callOpenAI(
@@ -134,6 +164,8 @@ export class APIAdapter implements AgentAdapter {
 }
 
 function buildPrompt(context: ProjectContext): string {
+  if (context.rawPrompt) return context.rawPrompt;
+
   const parts: string[] = [];
 
   if (context.previousAnalysis) {

@@ -84,7 +84,8 @@ export async function generateProfileInsights(
     dependencies: "",
     directoryTree: "",
     gitShortlog: "",
-    recentCommits: prompt,
+    recentCommits: "",
+    rawPrompt: prompt,
   };
 
   try {
