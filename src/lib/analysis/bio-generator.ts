@@ -19,15 +19,18 @@ export async function generateProfileInsights(
   const analyzed = projects.filter((p) => p.analysis);
   if (analyzed.length === 0) return null;
 
-  const projectSummaries = analyzed
-    .slice(0, 30)
+  // Include ALL selected projects — analyzed ones with full details, rest with basics
+  const sorted = [...projects].sort((a, b) => (b.authorCommitCount || b.commitCount) - (a.authorCommitCount || a.commitCount));
+  const projectSummaries = sorted
+    .slice(0, 50)
     .map((p) => {
       const tech = p.analysis?.techStack?.join(", ") || p.language;
       const desc = p.analysis?.summary?.slice(0, 120) || "";
       const commits = p.authorCommitCount || p.commitCount;
       const lines = p.size?.lines ? `${Math.round(p.size.lines / 1000)}K lines` : "";
       const date = p.dateRange.start?.split("-")[0] || "?";
-      return `- ${p.displayName} (${date}, ${commits} commits${lines ? ", " + lines : ""}): ${tech}. ${desc}`;
+      const analyzed = p.analysis ? "" : " [not analyzed]";
+      return `- ${p.displayName} (${date}, ${commits} commits${lines ? ", " + lines : ""}): ${tech}. ${desc}${analyzed}`;
     })
     .join("\n");
 
