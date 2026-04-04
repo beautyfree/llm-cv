@@ -78,6 +78,7 @@ program
   .command("publish")
   .description("Publish your portfolio to agent-cv.dev")
   .option("--bio <text>", "Custom bio/headline for your portfolio")
+  .option("--no-open", "Don't open browser after publishing")
   .action(async (opts: any) => {
     const { default: Publish } = await import("./commands/publish.tsx");
     render(React.createElement(Publish, { options: opts }));
