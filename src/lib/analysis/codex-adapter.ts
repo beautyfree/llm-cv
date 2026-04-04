@@ -59,10 +59,11 @@ function buildPrompt(context: ProjectContext): string {
       "Project changed since. Update the analysis. Respond with ONLY JSON:",
     );
   } else {
-    parts.push("Analyze this software project. Respond with ONLY a JSON object:");
+    parts.push("Analyze this software project as an experienced CTO evaluating engineering talent. Respond with ONLY a JSON object (no markdown, no explanation).");
   }
 
-  parts.push('{"summary": "2-3 sentence description", "techStack": ["Tech1"], "contributions": ["Feature 1"]}', "");
+  parts.push('{"summary": "2-3 sentence description", "techStack": ["Tech1"], "contributions": ["Feature 1"], "impactScore": 7}', "");
+  parts.push("impactScore: Rate 1-10 as a senior CTO would. Consider: technical complexity (architecture, scale, novel solutions), real-world value (solves a real problem, has users), engineering quality (tests, CI/CD, clean architecture), scope (full product vs toy/demo).", "");
   if (context.readme) parts.push("README:", context.readme.slice(0, 2000), "");
   if (context.dependencies) parts.push("DEPS:", context.dependencies.slice(0, 1000), "");
   if (context.recentCommits) parts.push("COMMITS:", context.recentCommits.slice(0, 1000));
@@ -78,6 +79,7 @@ function parseResponse(raw: string): ProjectAnalysis {
     summary: parsed.summary || "",
     techStack: Array.isArray(parsed.techStack) ? parsed.techStack : [],
     contributions: Array.isArray(parsed.contributions) ? parsed.contributions : [],
+    impactScore: typeof parsed.impactScore === "number" ? Math.min(10, Math.max(1, parsed.impactScore)) : undefined,
     analyzedAt: new Date().toISOString(),
     analyzedBy: "codex",
   };

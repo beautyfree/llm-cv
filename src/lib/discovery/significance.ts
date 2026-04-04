@@ -47,6 +47,11 @@ export function calculateSignificance(p: Project): number {
   if (techCount > 5) score += 3;
   else if (techCount > 2) score += 1;
 
+  // LLM impact score (CTO assessment) — heaviest signal when available
+  if (p.analysis?.impactScore) {
+    score += p.analysis.impactScore * 5; // 1-10 → 5-50 points
+  }
+
   // Active project bonus
   if (p.hasUncommittedChanges) score += 2;
 

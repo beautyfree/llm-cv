@@ -43,6 +43,8 @@ export interface ProjectAnalysis {
   summary: string;
   techStack: string[];
   contributions: string[];
+  /** LLM-assessed impact score 1-10 (complexity, real-world value, engineering quality) */
+  impactScore?: number;
   analyzedAt: string;
   analyzedBy: string;
   /** Last commit hash or date when analysis was done. Used for cache invalidation. */

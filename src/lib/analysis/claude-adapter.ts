@@ -81,15 +81,17 @@ function buildPrompt(context: ProjectContext): string {
       "The project has changed since then. Update the analysis: keep what's still accurate, revise what changed, add new contributions from recent commits.",
       "Respond with ONLY a JSON object (no markdown, no explanation).",
       "",
-      '{"summary": "2-3 sentence description", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature or achievement 1", "Key feature or achievement 2"]}',
+      '{"summary": "2-3 sentence description", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature or achievement 1", "Key feature or achievement 2"], "impactScore": 7}',
+      "impactScore: Rate 1-10 as a senior CTO would. Consider: technical complexity (architecture, scale, novel solutions), real-world value (solves a real problem, has users), engineering quality (tests, CI/CD, clean architecture), scope (full product vs toy/demo).",
       "",
     );
   } else {
     parts.push(
-      "Analyze this software project and respond with ONLY a JSON object (no markdown, no explanation).",
+      "Analyze this software project as an experienced CTO evaluating engineering talent. Respond with ONLY a JSON object (no markdown, no explanation).",
       "",
       "The JSON must have this exact structure:",
-      '{"summary": "2-3 sentence description of what this project does", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature or achievement 1", "Key feature or achievement 2"]}',
+      '{"summary": "2-3 sentence description of what this project does", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature or achievement 1", "Key feature or achievement 2"], "impactScore": 7}',
+      "impactScore: Rate 1-10 as a senior CTO would. Consider: technical complexity (architecture, scale, novel solutions), real-world value (solves a real problem, has users), engineering quality (tests, CI/CD, clean architecture), scope (full product vs toy/demo).",
       "",
     );
   }
@@ -142,6 +144,7 @@ function parseResponse(raw: string): ProjectAnalysis {
       contributions: Array.isArray(parsed.contributions)
         ? parsed.contributions
         : [],
+      impactScore: typeof parsed.impactScore === "number" ? Math.min(10, Math.max(1, parsed.impactScore)) : undefined,
       analyzedAt: new Date().toISOString(),
       analyzedBy: "claude",
     };
