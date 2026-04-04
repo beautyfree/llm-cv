@@ -171,6 +171,10 @@ export function Pipeline({ options, onComplete, onError }: Props) {
     setPhase("analyzing");
   }, []);
 
+  const handleAgentBack = useCallback(() => {
+    setPhase("selecting");
+  }, []);
+
   // Analysis failure state
   const [failedProjects, setFailedProjects] = useState<Array<{ project: Project; error: string }>>([]);
 
@@ -269,7 +273,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   if (phase === "picking-emails") return <EmailPicker emailCounts={emailCounts} preSelected={gitConfigEmails} onSubmit={handleEmailPick} />;
   if (phase === "recounting") return <Text color="yellow">Identifying your projects...</Text>;
   if (phase === "selecting") return <ProjectSelector projects={allProjects} scanRoot={directory} onSubmit={handleSelection} />;
-  if (phase === "picking-agent") return <AgentPicker onSubmit={handleAgentPick} />;
+  if (phase === "picking-agent") return <AgentPicker onSubmit={handleAgentPick} onBack={handleAgentBack} />;
   if (phase === "analyzing") {
     const statusIcon = (s: ProjectStatus) => {
       switch (s) {

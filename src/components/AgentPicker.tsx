@@ -16,9 +16,10 @@ interface AgentOption {
 
 interface Props {
   onSubmit: (adapter: AgentAdapter, name: string) => void;
+  onBack?: () => void;
 }
 
-export function AgentPicker({ onSubmit }: Props) {
+export function AgentPicker({ onSubmit, onBack }: Props) {
   const { exit } = useApp();
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [cursor, setCursor] = useState(0);
@@ -85,7 +86,10 @@ export function AgentPicker({ onSubmit }: Props) {
       if (selected?.available) {
         onSubmit(selected.adapter, selected.name);
       }
-    } else if (input === "q" || key.escape) {
+    } else if (key.escape) {
+      if (onBack) onBack();
+      else exit();
+    } else if (input === "q") {
       exit();
     }
   });
@@ -100,7 +104,7 @@ export function AgentPicker({ onSubmit }: Props) {
     <Box flexDirection="column">
       <Box marginBottom={1} flexDirection="column">
         <Text bold>Choose AI agent for analysis</Text>
-        <Text dimColor>[Enter] select  [q] quit</Text>
+        <Text dimColor>[Enter] select  [Esc] back  [q] quit</Text>
       </Box>
 
       {agents.map((agent, i) => {
