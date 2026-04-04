@@ -301,7 +301,7 @@ export default function Publish({ args, options }: Props) {
   if (phase === "checking-public") return <Text color="gray">Checking repos...</Text>;
   if (phase === "confirming") return (
     <Box flexDirection="column" gap={1}>
-      <Text bold>Ready to publish your portfolio:</Text>
+      <Text bold>Ready to publish your profile:</Text>
       <Text color="gray">  {totalCount} projects will appear on your page</Text>
       <Text color="gray">  {publicCount} with GitHub links (public repos only)</Text>
       <Text color="gray">  {totalCount - publicCount} private (URLs hidden)</Text>
@@ -316,7 +316,7 @@ export default function Publish({ args, options }: Props) {
     <Box flexDirection="column" gap={1}>
       <Text> </Text>
       <Box borderStyle="round" borderColor="green" paddingX={2} paddingY={1} flexDirection="column" alignItems="center">
-        <Text bold>Your portfolio is live at</Text>
+        <Text bold>Your profile is live at</Text>
         <Text bold color="cyan">{resultUrl}</Text>
       </Box>
       <Text color="gray">{totalCount} projects ({analyzedCount} with AI analysis) · {publicCount} public, {totalCount - publicCount} private</Text>
