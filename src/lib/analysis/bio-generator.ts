@@ -170,6 +170,7 @@ async function generateFinalProfile(
     "- GOOD: 'Full-stack engineer who builds and ships real products, from mobile apps to backend infrastructure'",
     "- Mention the BREADTH of their work, not just one domain. This person has " + projects.length + " projects across many areas.",
     "- Third person. No buzzwords. No jargon stacking.",
+    "- NEVER say 'their public story starts', 'based on available data', or imply limited visibility. You see the full portfolio.",
     "",
     "highlights:",
     "- Object with year keys. Pick 1-3 best projects PER YEAR for years that have meaningful work.",
