@@ -384,12 +384,12 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
         const hasMyCommits = p.authorCommitCount > 0;
         const isMyProject = hasMyCommits || !p.hasGit || p.commitCount === 0 || p.hasUncommittedChanges;
         const nameColor = isCursor ? "cyan" : isMyProject ? undefined : "gray";
-        const indent = "  ".repeat(row.depth);
+        const indent = "   ".repeat(row.depth);
 
         return (
           <Box key={p.id} gap={1}>
             <Text color={nameColor} inverse={isCursor}>
-              {indent}{checkbox} {p.displayName}
+              {indent}  {checkbox} {p.displayName}
             </Text>
             {p.tags.includes("new") && <Text color="blue" bold>NEW</Text>}
             {hasMyCommits && <Text color="green">★ {p.authorCommitCount} my / {p.commitCount} total</Text>}
