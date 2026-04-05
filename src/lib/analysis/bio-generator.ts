@@ -76,22 +76,50 @@ async function generateYearlyThemes(
     return `${year} (${yProjects.length} projects):\n${lines}`;
   }).join("\n\n");
 
+  // Compute domain distribution per year for the prompt
+  const domainHints = sortedYears.map((year) => {
+    const yProjects = byYear.get(year)!;
+    const domains = new Set<string>();
+    for (const p of yProjects) {
+      const tech = (p.analysis?.techStack || []).concat(p.frameworks).join(" ").toLowerCase();
+      if (tech.match(/react|next|vue|svelte|angular|frontend/)) domains.add("frontend");
+      if (tech.match(/express|fastify|nest|hono|backend|api|server/)) domains.add("backend");
+      if (tech.match(/solana|ethereum|web3|blockchain|defi|wallet|swap/)) domains.add("crypto/web3");
+      if (tech.match(/openai|llm|ai|ml|agent|claude|gpt/)) domains.add("AI/ML");
+      if (tech.match(/react.native|swift|kotlin|mobile|ios|android/)) domains.add("mobile");
+      if (tech.match(/cli|terminal|command/)) domains.add("CLI tools");
+      if (tech.match(/docker|kubernetes|k8s|terraform|infra/)) domains.add("infrastructure");
+      if (tech.match(/game|unity|three|canvas/)) domains.add("games/graphics");
+      if (p.language === "Rust") domains.add("Rust/systems");
+    }
+    return domains.size > 0 ? `${year} domains: ${[...domains].join(", ")}` : null;
+  }).filter(Boolean).join("\n");
+
   const prompt = [
-    "You are a tech portfolio writer summarizing a developer's evolution year by year.",
+    "Summarize this developer's year-by-year evolution for a portfolio page.",
     "Respond with ONLY a JSON array.",
     "",
     "Format: [{\"year\": \"2024\", \"focus\": \"one sentence\", \"topProjects\": [\"name1\", \"name2\"]}]",
     "",
+    "Example input:",
+    "2024 (15 projects):",
+    "  - [primary] my-wallet: React, Ethers.js. Crypto wallet with swap feature",
+    "  - [primary] chat-ai: TypeScript, OpenAI. AI chat assistant",
+    "  - [secondary] landing-page: Next.js. Company marketing site",
+    "",
+    "Example output:",
+    '[{"year": "2024", "focus": "Split time between a crypto wallet project and an AI chat tool, with some marketing site work on the side.", "topProjects": ["my-wallet", "chat-ai"]}]',
+    "",
     "Rules:",
-    "- focus MUST mention every distinct area they worked in that year, not just the biggest one.",
-    "  BAD:  \"Built microservices for Etherean\"",
-    "  GOOD: \"Balanced crypto backend work with AI tooling experiments and a React Native feeding tracker\"",
-    "- topProjects: pick 1-3 from DIFFERENT domains. If 8 projects are all from one org, still pick only 1 from it and look for others.",
-    "- Write focus as if explaining to a friend, not writing a spec. No jargon stacking.",
+    "- focus: one sentence covering ALL distinct areas they touched that year. Mention 2+ domains.",
+    "- topProjects: 1-3 from DIFFERENT domains. Max 1 per org/monorepo.",
+    "- Write like you're telling a friend, not writing a resume. Plain language.",
     "- Skip years with only clones or trivial forks.",
     "",
-    "Before outputting, verify: does every focus sentence mention at least 2 different areas? If not, rewrite it.",
+    "Domain hints (pre-computed from tech stacks):",
+    domainHints,
     "",
+    "Projects by year:",
     yearSummaries,
   ].join("\n");
 
@@ -147,6 +175,7 @@ async function generateFinalProfile(
 
   const years = projects.map((p) => p.dateRange.start?.split("-")[0]).filter(Boolean).sort();
   const firstYear = years[0] || "?";
+  const sortedYears = [...new Set(years)];
 
   const themesContext = yearlyThemes.length > 0
     ? "\nYearly evolution:\n" + yearlyThemes.map((t) => `- ${t.year}: ${t.focus} (${t.topProjects.join(", ")})`).join("\n") + "\n"
@@ -155,81 +184,65 @@ async function generateFinalProfile(
   const primaryCount = projects.filter((p) => p.tier === "primary").length;
   const secondaryCount = projects.filter((p) => p.tier === "secondary").length;
 
+  // Compute domain summary for breadth hint
+  const allDomains = new Set<string>();
+  for (const p of projects) {
+    const tech = (p.analysis?.techStack || []).concat(p.frameworks).join(" ").toLowerCase();
+    if (tech.match(/react|next|vue|svelte|frontend/)) allDomains.add("web frontend");
+    if (tech.match(/express|fastify|nest|hono|backend|api/)) allDomains.add("backend services");
+    if (tech.match(/solana|ethereum|web3|blockchain|defi|wallet/)) allDomains.add("crypto/blockchain");
+    if (tech.match(/openai|llm|ai|ml|agent|claude/)) allDomains.add("AI/ML");
+    if (tech.match(/react.native|swift|kotlin|mobile|ios|android/)) allDomains.add("mobile");
+    if (tech.match(/cli|terminal/)) allDomains.add("CLI/developer tools");
+    if (tech.match(/docker|kubernetes|terraform/)) allDomains.add("infrastructure");
+    if (p.language === "Rust") allDomains.add("Rust/systems");
+  }
+  const domainList = [...allDomains].join(", ");
+
   const prompt = [
-    "You are a portfolio writer for a developer's personal site. Your reader is a hiring manager or founder scanning this page for 30 seconds. Every sentence must earn its place.",
+    // === DATA FIRST (anchoring — LLM reads this with full attention) ===
+    `Developer profile: active since ${firstYear}, ${projects.length} projects total (${primaryCount} primary, ${secondaryCount} secondary).`,
+    `Domains: ${domainList}.`,
+    `Top languages: ${topLangs}. Top frameworks: ${topFw}.`,
+    themesContext,
+    "Top projects by significance:",
+    projectSummaries,
     "",
+    // === TASK (what to produce) ===
+    "Given the developer data above, write their portfolio page. A hiring manager will scan this in 30 seconds.",
     "Respond with ONLY a JSON object:",
     '{',
-    '  "bio": "string (3-4 sentences)",',
-    '  "highlights": {"2024": ["proj1", "proj2"], "2023": ["proj3"], ...},',
-    '  "narrative": "string (2-3 sentences)",',
-    '  "strongestSkills": ["skill1", "skill2", "skill3", "skill4", "skill5"],',
+    '  "bio": "3-4 sentences",',
+    '  "highlights": {"2026": ["proj1"], "2025": ["proj2", "proj3"], "2023": ["proj4"]},',
+    '  "narrative": "2-3 sentences",',
+    '  "strongestSkills": ["capability1", "capability2", "capability3", "capability4", "capability5"],',
     '  "uniqueTraits": ["trait1", "trait2", "trait3"]',
     '}',
     "",
-    "===== BIO =====",
-    "Write for a human who doesn't know this person. Third person.",
-    "Sentence 1: what they are (role + primary strength).",
-    "Sentence 2: the range of what they build (mention 3+ different areas from the data).",
-    "Sentence 3-4: what sets them apart or what they care about.",
+    // === CONSTRAINTS (recency — LLM reads these last, strongest enforcement) ===
+    "RULES FOR EACH FIELD:",
     "",
-    "HARD CONSTRAINTS:",
-    "- Max 2 technology names per sentence. 'TypeScript and React' is fine. 'TypeScript, React, Vite, OpenAPI, gRPC' is not.",
-    "- Never stack jargon. Test: would a non-technical founder understand each sentence?",
-    "- Never hedge ('their public story starts', 'based on available data'). You see the complete picture.",
-    "- Mention breadth. This developer has " + projects.length + " projects. If the bio sounds like they only do one thing, rewrite.",
+    "bio: Third person. Max 2 tech names per sentence. Sentence 1 = role. Sentence 2 = breadth (mention 3+ domains from the Domains list above). Sentences 3-4 = what sets them apart. Never hedge or imply partial data.",
+    "  BAD: 'Ships React/Vite clients with typed OpenAPI contracts alongside containerized TypeScript microservices on GKE.'",
+    "  GOOD: 'Full-stack engineer who builds and ships real products. Has worked across mobile apps, crypto infrastructure, AI tools, and developer tooling. Comfortable owning a project from idea to production.'",
     "",
-    "BAD: 'Ships React/Vite clients with typed OpenAPI contracts alongside containerized TypeScript microservices on GKE with gRPC and protobuf tooling.'",
-    "GOOD: 'Full-stack engineer who builds and ships real products. Has worked across mobile apps, crypto infrastructure, AI tools, and developer tooling. Comfortable owning a project from idea to production deploy.'",
+    "highlights: Object by year. 1-3 projects per year. MUST cover 3+ different years. Max 1 project from any single org per year. Include recent years (2025/2026) if notable. Prefer: starred, high impactScore, unique domain.",
+    "  BAD: {\"2023\": [\"EthereanBackend\", \"auth-app\", \"gate-service\"]} — same org.",
+    "  GOOD: {\"2026\": [\"llm-cv\", \"publora\"], \"2025\": [\"rork-feeding\"], \"2023\": [\"p2p-wallet-ios\", \"datingcrm\"]}",
     "",
-    "===== HIGHLIGHTS =====",
-    "Object keyed by year. For each year with meaningful work, pick 1-3 standout projects.",
+    "narrative: 2-3 sentences. Full arc from earliest year to latest. Multiple transitions, not just one. Plain language.",
+    "  BAD: 'Moved from Telegram Mini Apps into Etherean microservices.' — one transition, narrow.",
+    "  GOOD: 'Started with frontend experiments, got deep into crypto wallets and DeFi, then shifted toward AI tools and developer productivity.'",
     "",
-    "HARD CONSTRAINTS:",
-    "- MUST cover at least 3 different years (or all years if fewer than 3).",
-    "- Within one year, projects must be from different areas. Never 2+ projects from the same org or monorepo.",
-    "- Prefer: projects with stars, high impactScore, interesting domain, many commits.",
-    "- Include recent years (2025, 2026) if they have notable projects. Don't only highlight old work.",
+    "strongestSkills: 5 capabilities (not framework names). Pattern: 2 broad + 2 specific + 1 soft/meta.",
+    "  BAD: ['React', 'TypeScript', 'Node.js', 'Solidity', 'Docker']",
+    "  GOOD: ['Full-stack web development', 'Crypto wallet infrastructure', 'CLI tools and developer SDKs', 'Containerized microservices', 'Shipping solo from idea to production']",
     "",
-    "BAD: {\"2023\": [\"EthereanBackend\", \"auth-app\", \"gate-service\"]} — all from one org.",
-    "GOOD: {\"2026\": [\"llm-cv\", \"publora\"], \"2025\": [\"rork-feeding\", \"ai-privet\"], \"2023\": [\"p2p-wallet-ios\", \"datingcrm\"]}",
+    "uniqueTraits: 3 items, max 15 words each. What would surprise someone?",
+    "  BAD: ['Unusually wide surface area from Mini App frontends to Rust microservices'] — jargon.",
+    "  GOOD: ['Ships full products solo, not just components', 'Builds across crypto, AI, and mobile', '" + projects.length + " projects across " + (sortedYears.length) + " years']",
     "",
-    "===== NARRATIVE =====",
-    "2-3 sentences telling the career arc using the yearly evolution data below.",
-    "Must span the full timeline from earliest to most recent year.",
-    "Write like telling a friend 'here's how their interests evolved.'",
-    "",
-    "BAD: 'They moved from Telegram Mini Apps into Etherean microservices.' — too narrow, one transition.",
-    "GOOD: 'Started with frontend experiments and game prototypes, then got deep into crypto wallets and blockchain infrastructure. More recently shifted toward AI-powered tools and developer productivity.'",
-    "",
-    "===== STRONGEST SKILLS =====",
-    "Exactly 5 items. Describe capabilities, not framework names.",
-    "Pattern: 2 broad + 2 specific + 1 meta/soft.",
-    "",
-    "BAD: ['React', 'TypeScript', 'Node.js', 'Solidity', 'Docker']",
-    "GOOD: ['Full-stack web development', 'Crypto wallet and DeFi infrastructure', 'Building CLI tools and developer SDKs', 'Containerized microservice architecture', 'Shipping solo from idea to production']",
-    "",
-    "===== UNIQUE TRAITS =====",
-    "3 items. What would surprise someone? Under 15 words each.",
-    "",
-    "BAD: ['Unusually wide surface area from Mini App frontends to Rust microservices and on-chain-adjacent tooling'] — too long, too jargony.",
-    "GOOD: ['Ships full products solo, not just components', 'Jumps between crypto, AI, and mobile without losing depth', '500+ projects across 7 years — builds constantly']",
-    "",
-    "===== SELF-CHECK =====",
-    "Before outputting, verify:",
-    "1. Does bio mention 3+ different areas? If not, add them.",
-    "2. Do highlights span 3+ years? If not, add more years.",
-    "3. Does narrative cover early AND recent work? If not, expand.",
-    "4. Are skills capabilities, not framework names? If not, rewrite.",
-    "5. Is every uniqueTrait under 15 words? If not, trim.",
-    "",
-    `Active since: ${firstYear}`,
-    `Top languages: ${topLangs}`,
-    `Top frameworks: ${topFw}`,
-    `Total: ${projects.length} projects (${primaryCount} primary, ${secondaryCount} secondary)`,
-    themesContext,
-    "Projects (sorted by significance):",
-    projectSummaries,
+    "SELF-CHECK: Before outputting verify — bio mentions 3+ domains? highlights span 3+ years? narrative covers early AND recent? skills are capabilities not names? traits under 15 words?",
   ].join("\n");
 
   try {
